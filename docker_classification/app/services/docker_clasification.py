@@ -3,7 +3,7 @@ from collections import defaultdict
 
 
 class WeightedDiscovery:
-    def __init__(self, rules_path=None):
+    def __init__(self, rules_path: str = None) -> None:
         import os
         if rules_path is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,14 +12,11 @@ class WeightedDiscovery:
             self.rules = yaml.safe_load(f)
         self.threshold = 50
 
-    def classify_container(self, container_attrs):
+    def classify_container(self, labels: dict, envs: list, image: str, ports: list) -> list:
+        """
+        Классификация контейнера
+        """
         scores = defaultdict(int)
-
-        config = container_attrs.get('Config', {})
-        labels = config.get('Labels', {}) or {}
-        envs = config.get('Env', []) or []
-        image = config.get('Image', '').lower()
-        ports = [p.split('/')[0] for p in (config.get('ExposedPorts', {}) or {}).keys()]
 
         for port, data in self.rules['ports'].items():
             if port in ports:
@@ -41,3 +38,5 @@ class WeightedDiscovery:
         final_decision = {t: s for t, s in scores.items() if s >= self.threshold}
 
         return sorted(final_decision.items(), key=lambda x: x[1], reverse=True)
+
+
