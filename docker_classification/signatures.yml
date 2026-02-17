@@ -1,0 +1,440 @@
+# КАРТА СИГНАТУР С СИСТЕМОЙ ОЧКОВ
+# Порог (threshold) для активации мониторинга рекомендуется ставить на уровне 50-60
+
+# 1. СТАНДАРТНЫЕ ПОРТЫ
+ports:
+  # Databases
+  "5432": { tech: "postgresql", weight: 60 }
+  "3306": { tech: "mysql", weight: 60 }
+  "27017": { tech: "mongodb", weight: 60 }
+  "6379": { tech: "redis", weight: 60 }
+  "9042": { tech: "cassandra", weight: 60 }
+  "8123": { tech: "clickhouse", weight: 60 }
+  "5984": { tech: "couchdb", weight: 60 }
+  "8086": { tech: "influxdb", weight: 60 }
+  "7474": { tech: "neo4j", weight: 60 }
+  "7687": { tech: "neo4j", weight: 60 }
+  "8529": { tech: "arangodb", weight: 60 }
+  "8091": { tech: "couchbase", weight: 60 }
+  "8092": { tech: "couchbase", weight: 60 }
+  "8093": { tech: "couchbase", weight: 60 }
+  "8094": { tech: "couchbase", weight: 60 }
+  "8095": { tech: "couchbase", weight: 60 }
+  "8096": { tech: "couchbase", weight: 60 }
+  "11211": { tech: "memcached", weight: 60 }
+  "4200": { tech: "cratedb", weight: 60 }
+  "28015": { tech: "rethinkdb", weight: 60 }
+  "2424": { tech: "orientdb", weight: 60 }
+  "2480": { tech: "orientdb", weight: 60 }
+
+  # Message Brokers
+  "5672": { tech: "rabbitmq", weight: 60 }
+  "9092": { tech: "kafka", weight: 60 }
+  "4222": { tech: "nats", weight: 60 }
+  "61616": { tech: "activemq", weight: 60 }
+  "8161": { tech: "activemq", weight: 60 }
+  "6650": { tech: "pulsar", weight: 60 }
+  "1883": { tech: "mqtt", weight: 60 }
+  "8883": { tech: "mqtt", weight: 60 }
+  "9876": { tech: "rocketmq", weight: 60 }
+  "10911": { tech: "rocketmq", weight: 60 }
+
+  # Web & Proxies
+  "80": { tech: "nginx", weight: 30 }
+  "443": { tech: "nginx", weight: 30 }
+  "8080": { tech: "http_generic", weight: 15 }
+  "9000": { tech: "php_fpm", weight: 40 }
+  "2019": { tech: "caddy", weight: 50 }
+  "8404": { tech: "haproxy", weight: 50 }
+  "9901": { tech: "envoy", weight: 60 }
+  "10000": { tech: "envoy", weight: 60 }
+  "15000": { tech: "istio", weight: 60 }
+  "15001": { tech: "istio", weight: 60 }
+  "8086": { tech: "linkerd", weight: 60 }
+  "8000": { tech: "kong", weight: 50 }
+  "8001": { tech: "kong", weight: 50 }
+  "8443": { tech: "kong", weight: 50 }
+  
+  # Python Application Ports (common for FastAPI, Django, Flask)
+  "8002": { tech: "python", weight: 30 }
+  
+  # React/Next.js Application Ports
+  "3000": { tech: "react", weight: 30 }
+
+  # Search & Analytics
+  "9200": { tech: "elasticsearch", weight: 60 }
+  "3100": { tech: "loki", weight: 60 }
+  "8983": { tech: "solr", weight: 60 }
+  "7700": { tech: "meilisearch", weight: 60 }
+  "8108": { tech: "typesense", weight: 60 }
+
+  # Monitoring & Observability
+  "16686": { tech: "jaeger", weight: 60 }
+  "14268": { tech: "jaeger", weight: 60 }
+  "9411": { tech: "zipkin", weight: 60 }
+  "3200": { tech: "tempo", weight: 60 }
+  "10902": { tech: "thanos", weight: 60 }
+  "10901": { tech: "thanos", weight: 60 }
+  "9093": { tech: "alertmanager", weight: 60 }
+  "9100": { tech: "node_exporter", weight: 60 }
+  "9115": { tech: "blackbox_exporter", weight: 60 }
+  "9091": { tech: "pushgateway", weight: 60 }
+  "8428": { tech: "victoriametrics", weight: 60 }
+  "9273": { tech: "telegraf", weight: 60 }
+  "8126": { tech: "datadog", weight: 60 }
+
+  # Container Orchestration
+  "6443": { tech: "kubernetes", weight: 60 }
+  "2379": { tech: "etcd", weight: 60 }
+  "2380": { tech: "etcd", weight: 60 }
+  "8500": { tech: "consul", weight: 60 }
+  "8600": { tech: "consul", weight: 60 }
+  "8200": { tech: "vault", weight: 60 }
+  "4646": { tech: "nomad", weight: 60 }
+  "4647": { tech: "nomad", weight: 60 }
+  "9000": { tech: "portainer", weight: 50 }
+  "9443": { tech: "portainer", weight: 50 }
+
+  # CI/CD Tools
+  "50000": { tech: "jenkins", weight: 60 }
+
+  # Storage
+  "9001": { tech: "minio", weight: 60 }
+  "6789": { tech: "ceph", weight: 60 }
+  "6800": { tech: "ceph", weight: 60 }
+  "24007": { tech: "glusterfs", weight: 60 }
+  "24008": { tech: "glusterfs", weight: 60 }
+
+  # Other Services
+  "2368": { tech: "ghost", weight: 60 }
+  "22": { tech: "gitlab", weight: 40 }
+  "8090": { tech: "confluence", weight: 60 }
+  "8081": { tech: "nexus", weight: 60 }
+  "8082": { tech: "artifactory", weight: 60 }
+
+# 2. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+env:
+  # Languages/Runtimes
+  "PYTHON_VERSION": { tech: "python", weight: 30 }
+  "PYTHONUNBUFFERED": { tech: "python", weight: 40 }
+  "NODE_VERSION": { tech: "nodejs", weight: 30 }
+  "JAVA_HOME": { tech: "java", weight: 30 }
+  "GOPATH": { tech: "go", weight: 30 }
+  "GO_VERSION": { tech: "go", weight: 30 }
+  "RUBY_VERSION": { tech: "ruby", weight: 30 }
+  "GEM_HOME": { tech: "ruby", weight: 30 }
+  "PHP_VERSION": { tech: "php", weight: 30 }
+  "DOTNET_VERSION": { tech: "dotnet", weight: 30 }
+  "DOTNET_ROOT": { tech: "dotnet", weight: 30 }
+  "RUST_VERSION": { tech: "rust", weight: 30 }
+  "CARGO_HOME": { tech: "rust", weight: 30 }
+  "ELIXIR_VERSION": { tech: "elixir", weight: 30 }
+  "ERLANG_VERSION": { tech: "erlang", weight: 30 }
+  "CRYSTAL_VERSION": { tech: "crystal", weight: 30 }
+  "KOTLIN_VERSION": { tech: "kotlin", weight: 30 }
+  "SCALA_VERSION": { tech: "scala", weight: 30 }
+
+  # DB Specific (Очень точные признаки)
+  "POSTGRES_PASSWORD": { tech: "postgresql", weight: 50 }
+  "POSTGRES_DB": { tech: "postgresql", weight: 50 }
+  "POSTGRES_USER": { tech: "postgresql", weight: 50 }
+  "MYSQL_ROOT_PASSWORD": { tech: "mysql", weight: 50 }
+  "MYSQL_DATABASE": { tech: "mysql", weight: 50 }
+  "MYSQL_USER": { tech: "mysql", weight: 50 }
+  "MARIADB_ROOT_PASSWORD": { tech: "mariadb", weight: 50 }
+  "MARIADB_DATABASE": { tech: "mariadb", weight: 50 }
+  "MONGO_INITDB_ROOT_USERNAME": { tech: "mongodb", weight: 50 }
+  "MONGO_INITDB_ROOT_PASSWORD": { tech: "mongodb", weight: 50 }
+  "MONGO_INITDB_DATABASE": { tech: "mongodb", weight: 50 }
+  "INFLUXDB_DB": { tech: "influxdb", weight: 50 }
+  "INFLUXDB_USER": { tech: "influxdb", weight: 50 }
+  "INFLUXDB_ADMIN_PASSWORD": { tech: "influxdb", weight: 50 }
+  "NEO4J_AUTH": { tech: "neo4j", weight: 50 }
+  "NEO4J_dbms_memory_heap_max__size": { tech: "neo4j", weight: 50 }
+  "COUCHDB_USER": { tech: "couchdb", weight: 50 }
+  "COUCHDB_PASSWORD": { tech: "couchdb", weight: 50 }
+  "COUCHBASE_ADMINISTRATOR": { tech: "couchbase", weight: 50 }
+  "COUCHBASE_PASSWORD": { tech: "couchbase", weight: 50 }
+  "MEMCACHED_MEMUSAGE": { tech: "memcached", weight: 50 }
+  "CLICKHOUSE_DB": { tech: "clickhouse", weight: 50 }
+  "CLICKHOUSE_USER": { tech: "clickhouse", weight: 50 }
+  "CLICKHOUSE_PASSWORD": { tech: "clickhouse", weight: 50 }
+
+  # Frameworks
+  "DJANGO_SETTINGS_MODULE": { tech: "django", weight: 70 }
+  "FLASK_APP": { tech: "flask", weight: 70 }
+  "RAILS_ENV": { tech: "rails", weight: 70 }
+  "SPRING_PROFILES_ACTIVE": { tech: "spring_boot", weight: 70 }
+  "SPRING_APPLICATION_NAME": { tech: "spring_boot", weight: 70 }
+  "NODE_ENV": { tech: "express", weight: 50 }
+  "EXPRESS_PORT": { tech: "express", weight: 50 }
+  "FASTAPI_ENV": { tech: "fastapi", weight: 70 }
+  "FASTAPI_APP": { tech: "fastapi", weight: 70 }
+  "APP_ENV": { tech: "laravel", weight: 50 }
+  "LARAVEL_ENV": { tech: "laravel", weight: 70 }
+  "ASPNETCORE_ENVIRONMENT": { tech: "aspnet", weight: 70 }
+  "ASPNETCORE_URLS": { tech: "aspnet", weight: 70 }
+  "NEXT_PUBLIC_": { tech: "nextjs", weight: 50 }
+  "NEXT_TELEMETRY_DISABLED": { tech: "nextjs", weight: 50 }
+  "NUXT_HOST": { tech: "nuxtjs", weight: 70 }
+  "NUXT_PORT": { tech: "nuxtjs", weight: 70 }
+  "NEST_ENV": { tech: "nestjs", weight: 70 }
+  "PHOENIX_HOST": { tech: "phoenix", weight: 70 }
+  "PLAY_HTTP_SECRET_KEY": { tech: "play", weight: 70 }
+  
+  # Python Application Indicators
+  "SECRET_KEY": { tech: "python", weight: 40 }
+  "DATABASE_URL": { tech: "python", weight: 40 }
+  "ALGORITHM": { tech: "python", weight: 30 }
+  "ACCESS_TOKEN_EXPIRE_MINUTES": { tech: "python", weight: 30 }
+  "ENVIRONMENT": { tech: "python", weight: 30 }
+  "RAG_API_URL": { tech: "python", weight: 30 }
+  "BACKEND_API_URL": { tech: "python", weight: 30 }
+  
+  # React Application Indicators
+  "REACT_APP_": { tech: "react", weight: 50 }
+  
+  # Nginx Indicators
+  "NGINX_VERSION": { tech: "nginx", weight: 50 }
+  
+  # Telegram Bot Indicators
+  "TELEGRAM_BOT_TOKEN": { tech: "telegram_bot", weight: 60 }
+  "ADMIN_GROUP_CHAT_ID": { tech: "telegram_bot", weight: 40 }
+
+  # Message Brokers
+  "RABBITMQ_DEFAULT_USER": { tech: "rabbitmq", weight: 50 }
+  "RABBITMQ_DEFAULT_PASS": { tech: "rabbitmq", weight: 50 }
+  "KAFKA_BROKER_ID": { tech: "kafka", weight: 50 }
+  "KAFKA_ZOOKEEPER_CONNECT": { tech: "kafka", weight: 50 }
+  "NATS_URL": { tech: "nats", weight: 50 }
+  "ACTIVEMQ_ADMIN_LOGIN": { tech: "activemq", weight: 50 }
+  "ACTIVEMQ_ADMIN_PASSWORD": { tech: "activemq", weight: 50 }
+  "PULSAR_MEM": { tech: "pulsar", weight: 50 }
+  "MQTT_USERNAME": { tech: "mqtt", weight: 50 }
+  "MQTT_PASSWORD": { tech: "mqtt", weight: 50 }
+
+  # Monitoring & Observability
+  "JAEGER_AGENT_HOST": { tech: "jaeger", weight: 50 }
+  "JAEGER_SAMPLER_TYPE": { tech: "jaeger", weight: 50 }
+  "ZIPKIN_SERVICE_NAME": { tech: "zipkin", weight: 50 }
+  "TEMPO_BACKEND": { tech: "tempo", weight: 50 }
+  "THANOS_STORE_API_ADDRESS": { tech: "thanos", weight: 50 }
+  "PROMETHEUS_CONFIG_PATH": { tech: "prometheus", weight: 50 }
+  "GRAFANA_ADMIN_PASSWORD": { tech: "grafana", weight: 50 }
+  "GRAFANA_ADMIN_USER": { tech: "grafana", weight: 50 }
+  "VICTORIAMETRICS_LISTEN_ADDRESS": { tech: "victoriametrics", weight: 50 }
+  "TELEGRAF_OUTPUTS_INFLUXDB_URLS": { tech: "telegraf", weight: 50 }
+  "DD_API_KEY": { tech: "datadog", weight: 50 }
+  "DD_AGENT_HOST": { tech: "datadog", weight: 50 }
+  "SENTRY_DSN": { tech: "sentry", weight: 50 }
+  "SENTRY_ENVIRONMENT": { tech: "sentry", weight: 50 }
+
+  # Container Orchestration
+  "KUBERNETES_SERVICE_HOST": { tech: "kubernetes", weight: 50 }
+  "KUBERNETES_SERVICE_PORT": { tech: "kubernetes", weight: 50 }
+  "ETCD_NAME": { tech: "etcd", weight: 50 }
+  "ETCD_DATA_DIR": { tech: "etcd", weight: 50 }
+  "CONSUL_BIND_INTERFACE": { tech: "consul", weight: 50 }
+  "CONSUL_CLIENT_ADDRESS": { tech: "consul", weight: 50 }
+  "VAULT_ADDR": { tech: "vault", weight: 50 }
+  "VAULT_TOKEN": { tech: "vault", weight: 50 }
+  "NOMAD_ADDR": { tech: "nomad", weight: 50 }
+  "NOMAD_REGION": { tech: "nomad", weight: 50 }
+
+  # CI/CD
+  "JENKINS_OPTS": { tech: "jenkins", weight: 50 }
+  "JENKINS_HOME": { tech: "jenkins", weight: 50 }
+  "GITLAB_CI": { tech: "gitlab_runner", weight: 50 }
+  "CI_JOB_TOKEN": { tech: "gitlab_runner", weight: 50 }
+  "DRONE_SERVER": { tech: "drone", weight: 50 }
+  "DRONE_TOKEN": { tech: "drone", weight: 50 }
+  "ARGOCD_SERVER_PORT": { tech: "argocd", weight: 50 }
+  "ARGOCD_SERVER_ROOT_PATH": { tech: "argocd", weight: 50 }
+
+  # Storage
+  "MINIO_ROOT_USER": { tech: "minio", weight: 50 }
+  "MINIO_ROOT_PASSWORD": { tech: "minio", weight: 50 }
+  "AWS_ACCESS_KEY_ID": { tech: "s3", weight: 40 }
+  "AWS_SECRET_ACCESS_KEY": { tech: "s3", weight: 40 }
+  "S3_ENDPOINT": { tech: "s3", weight: 50 }
+
+  # Other Services
+  "WORDPRESS_DB_HOST": { tech: "wordpress", weight: 70 }
+  "WORDPRESS_DB_NAME": { tech: "wordpress", weight: 70 }
+  "WORDPRESS_DB_USER": { tech: "wordpress", weight: 70 }
+  "WORDPRESS_DB_PASSWORD": { tech: "wordpress", weight: 70 }
+  "DRUPAL_DATABASE_HOST": { tech: "drupal", weight: 70 }
+  "DRUPAL_DATABASE_NAME": { tech: "drupal", weight: 70 }
+  "GITLAB_ROOT_PASSWORD": { tech: "gitlab", weight: 50 }
+  "GITLAB_OMNIBUS_CONFIG": { tech: "gitlab", weight: 50 }
+  "GITEA_DB_TYPE": { tech: "gitea", weight: 50 }
+  "GITEA_DB_HOST": { tech: "gitea", weight: 50 }
+  "JIRA_DATABASE_URL": { tech: "jira", weight: 70 }
+  "JIRA_HOME": { tech: "jira", weight: 70 }
+  "CONFLUENCE_DATABASE_URL": { tech: "confluence", weight: 70 }
+  "SONAR_JDBC_URL": { tech: "sonarqube", weight: 70 }
+  "SONAR_JDBC_USERNAME": { tech: "sonarqube", weight: 70 }
+  "NEXUS_DATA_DIR": { tech: "nexus", weight: 50 }
+  "ARTIFACTORY_HOME": { tech: "artifactory", weight: 50 }
+
+# 3. ИМЕНА ОБРАЗОВ
+images:
+  # Databases
+  "postgres": { tech: "postgresql", weight: 40 }
+  "postgresql": { tech: "postgresql", weight: 40 }
+  "mysql": { tech: "mysql", weight: 40 }
+  "mariadb": { tech: "mariadb", weight: 40 }
+  "mongodb": { tech: "mongodb", weight: 40 }
+  "mongo": { tech: "mongodb", weight: 40 }
+  "redis": { tech: "redis", weight: 40 }
+  "cassandra": { tech: "cassandra", weight: 40 }
+  "scylladb": { tech: "scylladb", weight: 40 }
+  "clickhouse": { tech: "clickhouse", weight: 40 }
+  "couchdb": { tech: "couchdb", weight: 40 }
+  "influxdb": { tech: "influxdb", weight: 40 }
+  "influx": { tech: "influxdb", weight: 40 }
+  "neo4j": { tech: "neo4j", weight: 40 }
+  "arangodb": { tech: "arangodb", weight: 40 }
+  "couchbase": { tech: "couchbase", weight: 40 }
+  "memcached": { tech: "memcached", weight: 40 }
+  "cratedb": { tech: "cratedb", weight: 40 }
+  "rethinkdb": { tech: "rethinkdb", weight: 40 }
+  "orientdb": { tech: "orientdb", weight: 40 }
+  "timescaledb": { tech: "timescaledb", weight: 40 }
+  "supabase": { tech: "supabase", weight: 40 }
+
+  # Message Brokers
+  "rabbitmq": { tech: "rabbitmq", weight: 40 }
+  "kafka": { tech: "kafka", weight: 40 }
+  "nats": { tech: "nats", weight: 40 }
+  "activemq": { tech: "activemq", weight: 40 }
+  "artemis": { tech: "artemis", weight: 40 }
+  "pulsar": { tech: "pulsar", weight: 40 }
+  "mosquitto": { tech: "mqtt", weight: 40 }
+  "eclipse-mosquitto": { tech: "mqtt", weight: 40 }
+  "rocketmq": { tech: "rocketmq", weight: 40 }
+  "zeromq": { tech: "zeromq", weight: 40 }
+
+  # Web Servers & Proxies
+  "nginx": { tech: "nginx", weight: 40 }
+  "apache": { tech: "apache", weight: 40 }
+  "httpd": { tech: "apache", weight: 40 }
+  "caddy": { tech: "caddy", weight: 40 }
+  "traefik": { tech: "traefik", weight: 40 }
+  "haproxy": { tech: "haproxy", weight: 40 }
+  "envoy": { tech: "envoy", weight: 40 }
+  "istio": { tech: "istio", weight: 40 }
+  "linkerd": { tech: "linkerd", weight: 40 }
+  "kong": { tech: "kong", weight: 40 }
+  "tyk": { tech: "tyk", weight: 40 }
+  "ambassador": { tech: "ambassador", weight: 40 }
+  "gloo": { tech: "gloo", weight: 40 }
+
+  # Search Engines
+  "elasticsearch": { tech: "elasticsearch", weight: 40 }
+  "opensearch": { tech: "opensearch", weight: 40 }
+  "solr": { tech: "solr", weight: 40 }
+  "meilisearch": { tech: "meilisearch", weight: 40 }
+  "typesense": { tech: "typesense", weight: 40 }
+
+  # Monitoring & Observability
+  "grafana": { tech: "grafana", weight: 40 }
+  "prometheus": { tech: "prometheus", weight: 40 }
+  "jaeger": { tech: "jaeger", weight: 40 }
+  "zipkin": { tech: "zipkin", weight: 40 }
+  "tempo": { tech: "tempo", weight: 40 }
+  "thanos": { tech: "thanos", weight: 40 }
+  "alertmanager": { tech: "alertmanager", weight: 40 }
+  "node-exporter": { tech: "node_exporter", weight: 40 }
+  "cadvisor": { tech: "cadvisor", weight: 40 }
+  "blackbox-exporter": { tech: "blackbox_exporter", weight: 40 }
+  "pushgateway": { tech: "pushgateway", weight: 40 }
+  "victoriametrics": { tech: "victoriametrics", weight: 40 }
+  "telegraf": { tech: "telegraf", weight: 40 }
+  "datadog": { tech: "datadog", weight: 40 }
+  "dd-agent": { tech: "datadog", weight: 40 }
+  "sentry": { tech: "sentry", weight: 40 }
+  "loki": { tech: "loki", weight: 40 }
+
+  # Container Orchestration
+  "kubernetes": { tech: "kubernetes", weight: 40 }
+  "k8s": { tech: "kubernetes", weight: 40 }
+  "k3s": { tech: "k3s", weight: 40 }
+  "etcd": { tech: "etcd", weight: 40 }
+  "consul": { tech: "consul", weight: 40 }
+  "vault": { tech: "vault", weight: 40 }
+  "nomad": { tech: "nomad", weight: 40 }
+  "portainer": { tech: "portainer", weight: 40 }
+  "rancher": { tech: "rancher", weight: 40 }
+
+  # CI/CD
+  "jenkins": { tech: "jenkins", weight: 40 }
+  "gitlab-runner": { tech: "gitlab_runner", weight: 40 }
+  "gitlab/gitlab-runner": { tech: "gitlab_runner", weight: 40 }
+  "drone": { tech: "drone", weight: 40 }
+  "argocd": { tech: "argocd", weight: 40 }
+  "spinnaker": { tech: "spinnaker", weight: 40 }
+  "tekton": { tech: "tekton", weight: 40 }
+
+  # Storage
+  "minio": { tech: "minio", weight: 40 }
+  "ceph": { tech: "ceph", weight: 40 }
+  "glusterfs": { tech: "glusterfs", weight: 40 }
+
+  # Frameworks & Runtimes
+  "python": { tech: "python", weight: 30 }
+  "node": { tech: "nodejs", weight: 30 }
+  "nodejs": { tech: "nodejs", weight: 30 }
+  "java": { tech: "java", weight: 30 }
+  "openjdk": { tech: "java", weight: 30 }
+  "golang": { tech: "go", weight: 30 }
+  "go": { tech: "go", weight: 30 }
+  "ruby": { tech: "ruby", weight: 30 }
+  "php": { tech: "php", weight: 30 }
+  "php-fpm": { tech: "php_fpm", weight: 40 }
+  "dotnet": { tech: "dotnet", weight: 30 }
+  "rust": { tech: "rust", weight: 30 }
+  "elixir": { tech: "elixir", weight: 30 }
+  "erlang": { tech: "erlang", weight: 30 }
+
+  # Application Frameworks
+  "django": { tech: "django", weight: 40 }
+  "flask": { tech: "flask", weight: 40 }
+  "rails": { tech: "rails", weight: 40 }
+  "spring": { tech: "spring_boot", weight: 40 }
+  "express": { tech: "express", weight: 40 }
+  "fastapi": { tech: "fastapi", weight: 40 }
+  "laravel": { tech: "laravel", weight: 40 }
+  "nextjs": { tech: "nextjs", weight: 40 }
+  "next": { tech: "nextjs", weight: 40 }
+  "nuxt": { tech: "nuxtjs", weight: 40 }
+  "nuxtjs": { tech: "nuxtjs", weight: 40 }
+  "nestjs": { tech: "nestjs", weight: 40 }
+  "phoenix": { tech: "phoenix", weight: 40 }
+  "play": { tech: "play", weight: 40 }
+  "react": { tech: "react", weight: 40 }
+  "frontend": { tech: "react", weight: 30 }
+  "telegram": { tech: "telegram_bot", weight: 40 }
+  "bot": { tech: "telegram_bot", weight: 30 }
+
+  # Other Services
+  "wordpress": { tech: "wordpress", weight: 40 }
+  "drupal": { tech: "drupal", weight: 40 }
+  "joomla": { tech: "joomla", weight: 40 }
+  "ghost": { tech: "ghost", weight: 40 }
+  "matomo": { tech: "matomo", weight: 40 }
+  "gitlab": { tech: "gitlab", weight: 40 }
+  "gitea": { tech: "gitea", weight: 40 }
+  "jira": { tech: "jira", weight: 40 }
+  "confluence": { tech: "confluence", weight: 40 }
+  "sonarqube": { tech: "sonarqube", weight: 40 }
+  "sonar": { tech: "sonarqube", weight: 40 }
+  "nexus": { tech: "nexus", weight: 40 }
+  "artifactory": { tech: "artifactory", weight: 40 }
+  "jfrog": { tech: "artifactory", weight: 40 }
+
+# 4. СПЕЦИФИЧНЫЕ МЕТКИ (Высший приоритет)
+labels:
+  "monitor.type": { tech: "auto", weight: 100 }
+  "monitor.enable": { tech: "auto", weight: 100 }
+  "com.docker.compose.service": { tech: "auto", weight: 20 }
