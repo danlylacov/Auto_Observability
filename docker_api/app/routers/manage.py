@@ -12,17 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_docker_manager(remote_host: Optional[RemoteHost]= None) -> DockerManager:
-    """
-    Создание экземпляра класса работы с DockerManager
-    """
     return DockerManager(f'{remote_host.username}@{remote_host.address}') if remote_host \
         else DockerManager()
 
 @router.post("/container/stop", status_code=status.HTTP_200_OK)
-async def stop_container(container: Container, remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Остановить контейнер
-    """
+async def stop_container(container: Container, remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.stop_container(container.id)
@@ -36,10 +30,7 @@ async def stop_container(container: Container, remote_host: Optional[RemoteHost]
 
 
 @router.delete("/container/remove", status_code=status.HTTP_200_OK)
-async def remove_container(container: Container, force: bool = False, remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Удалить контейнер
-    """
+async def remove_container(container: Container, force: bool = False, remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.remove_container(container.id, force=force)
@@ -52,10 +43,7 @@ async def remove_container(container: Container, force: bool = False, remote_hos
         )
 
 @router.post("/container/start", status_code=status.HTTP_200_OK)
-async def start_container(container: Container, remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Запустить контейнер
-    """
+async def start_container(container: Container, remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.start_container(container.id)
@@ -69,10 +57,7 @@ async def start_container(container: Container, remote_host: Optional[RemoteHost
 
 
 @router.delete("/volume/remove", status_code=status.HTTP_200_OK)
-async def remove_volume(volume_name: str, force: bool = False, remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Удалить том
-    """
+async def remove_volume(volume_name: str, force: bool = False, remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.remove_volume(volume_name, force=force)
@@ -86,10 +71,7 @@ async def remove_volume(volume_name: str, force: bool = False, remote_host: Opti
 
 
 @router.post("/volumes/prune", status_code=status.HTTP_200_OK)
-async def prune_volumes(remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Удалить не используемые тома
-    """
+async def prune_volumes(remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.prune_volumes()
@@ -103,10 +85,7 @@ async def prune_volumes(remote_host: Optional[RemoteHost] = None) -> dict:
 
 
 @router.delete("/image/remove", status_code=status.HTTP_200_OK)
-async def remove_image(image_id_or_name: str, force: bool = False, remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Удалить образ
-    """
+async def remove_image(image_id_or_name: str, force: bool = False, remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.remove_image(image_id_or_name, force=force)
@@ -120,10 +99,7 @@ async def remove_image(image_id_or_name: str, force: bool = False, remote_host: 
 
 
 @router.post("/system/cleanup", status_code=status.HTTP_200_OK)
-async def cleanup_system(remote_host: Optional[RemoteHost] = None) -> dict:
-    """
-    Полная очистка системы
-    """
+async def cleanup_system(remote_host: Optional[RemoteHost] = None):
     try:
         docker_manager = get_docker_manager(remote_host)
         result = docker_manager.cleanup_system()

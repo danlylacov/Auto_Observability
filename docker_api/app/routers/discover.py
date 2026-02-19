@@ -14,10 +14,7 @@ def get_docker_manager(remote_host: Optional[RemoteHost] = None) -> DockerManage
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-async def docker_discover(remote_host: RemoteHost = None) -> dict:
-    """
-    Получить все контейнеры
-    """
+async def create_item(remote_host: RemoteHost = None):
     try:
         docker_manager = get_docker_manager(remote_host)
 

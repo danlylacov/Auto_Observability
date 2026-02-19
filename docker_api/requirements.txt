@@ -1,0 +1,10 @@
+# FastAPI и веб-сервер
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Валидация данных
+pydantic>=2.0.0
+
+# Docker SDK
+docker>=6.1.0
+
