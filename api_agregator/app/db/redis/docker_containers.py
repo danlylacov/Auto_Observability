@@ -1,0 +1,43 @@
+import json
+
+from app.db.redis.redis_connection import RedisConnection
+
+
+class DockerContainers(RedisConnection):
+    """
+    Класс для управления информацией о DockerContainers в Redis
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self.client = self.connect()
+
+    def upload_containers(self, containers: dict, host: str = 'localhost') -> None:
+        """
+        Загрузка нескольких контейнеров
+        """
+        pipe = self.client.pipeline()
+        for id, data in containers.items():
+            pipe.set(f'container:{host}:{id}', json.dumps(data))
+        pipe.execute()
+
+    def upload_container(self, container_id: str, container_data: dict, host: str = 'localhost') -> None:
+        """
+        Зашрузка одного контейнера
+        """
+        self.client.set(f'container:{host}:{container_id}', json.dumps(container_data))
+
+    def delete_all_containers_by_host(self, host: str) -> int:
+        """
+        Удаляет все ключи с префиксом 'container:'
+        Возвращает количество удаленных ключей
+        """
+        container_keys = self.client.keys(f'container:{host}:*')
+        if not container_keys:
+            print("Контейнеры не найдены")
+            return 0
+        deleted_count = self.client.delete(*container_keys)
+        return deleted_count
+
+
+
+

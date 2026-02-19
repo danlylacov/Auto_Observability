@@ -1,5 +1,9 @@
+import os
+import sys
+
 from celery import Celery
 from celery.schedules import crontab
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app.config import settings
 
 # Создаем экземпляр Celery
@@ -25,7 +29,7 @@ celery_app.conf.update(
 
 celery_app.conf.beat_schedule = {
     'run-every-minute': {
-        'task': 'app.tasks.minute_task',
+        'task': 'app.tasks.update_containers',
         'schedule': crontab(minute='*'),
     }
 }

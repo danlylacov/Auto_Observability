@@ -12,3 +12,8 @@ docker>=6.1.0
 
 # databases
 redis
+
+# Brokers
+celery
+
+requests

@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import discover, manage
+from app.routers import containers
 
 app = FastAPI(
     title="Auto Observability API",
@@ -8,8 +8,8 @@ app = FastAPI(
 )
 
 
-app.include_router(discover.router, prefix="/api/v1/discover", tags=["discover"])
-app.include_router(manage.router, prefix="/api/v1/manage", tags=["manage"])
+app.include_router(containers.router, prefix="/api/v1/containers", tags=["containers"])
+
 
 @app.get("/")
 async def root():
