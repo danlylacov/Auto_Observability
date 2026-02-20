@@ -26,6 +26,29 @@ class DockerContainers(RedisConnection):
         """
         self.client.set(f'container:{host}:{container_id}', json.dumps(container_data))
 
+    def get_containers(self, host: str = 'localhost') -> dict:
+        """
+        Получает все контейнеры для указанного хоста
+        """
+        pattern = f'container:{host}:*'
+        container_keys = self.client.keys(pattern)
+        if not container_keys:
+            return {}
+
+        containers = {}
+        pipe = self.client.pipeline()
+
+        for key in container_keys:
+            pipe.get(key)
+
+        values = pipe.execute()
+
+        for key, value in zip(container_keys, values):
+            if value:
+                container_id = key.decode('utf-8').split(':')[-1] if isinstance(key, bytes) else key.split(':')[-1]
+                containers[container_id] = json.loads(value)
+        return containers
+
     def delete_all_containers_by_host(self, host: str) -> int:
         """
         Удаляет все ключи с префиксом 'container:'

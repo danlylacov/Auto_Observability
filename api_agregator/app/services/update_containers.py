@@ -3,6 +3,8 @@ import requests
 from dotenv import load_dotenv
 from app.db.redis.docker_containers import DockerContainers
 
+from app.services.api_getaway import APIGateway
+
 
 class UpdateContainers:
     """
@@ -10,33 +12,35 @@ class UpdateContainers:
     """
 
     def __init__(self, hosts: list = None):
-        load_dotenv()
         self.hosts = hosts
+
+        load_dotenv()
         self.docker_api_url = os.getenv('DOCKER_API_URL')
         self.docker_classification_api_url = os.getenv('DOCKER_CLASSIFICATION_API_URL')
+        self.docker_api = APIGateway(self.docker_api_url)
+        self.docker_classification_api = APIGateway(self.docker_classification_api_url)
 
     def _get_host_containers(self, host: dict[str, str] = None) -> dict:
         """
         Получение всех контейнеров по хосту
         """
         result = {}
-        containers_url = f'{self.docker_api_url}/api/v1/discover/'
         host_params = {
             "address": host['address'],
             "username": host['username']
         } if host else None
-        containers = requests.post(containers_url, params=host_params).json()['containers']
+
+        containers = self.docker_api.make_request(method="POST", endpoint='/api/v1/discover/', params=host_params)['containers']
+
         for container in containers:
             classification = self._classificate_container(container)
             result[container['Id']] = {'info': container, 'classification': classification}
-        print(result)
         return result
 
     def _classificate_container(self, container: dict[str, str] = None) -> dict[str, str]:
         """
         Классификация контейнера (определение технологий) по информации о нем
         """
-        classificate_url = f'{self.docker_classification_api_url}/api/v1/classificate/'
         container_params = {
             "labels": container['Config']['Labels'],
             "envs": container['Config']['Env'],
@@ -45,7 +49,11 @@ class UpdateContainers:
                 port.split('/')[0] for port in container['Config']['ExposedPorts'].keys()
             ] if 'ExposedPorts' in container['Config'].keys() else []
         }
-        classificate_response = requests.post(classificate_url, json=container_params).json()['result']
+        classificate_response = self.docker_classification_api.make_request(
+            method="POST",
+            endpoint='/api/v1/classificate/',
+            json_data=container_params
+        )
         return classificate_response
 
     def upload_containers(self) -> None:
