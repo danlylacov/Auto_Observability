@@ -23,7 +23,6 @@ class APIGateway:
         url = f"{self.base_url}{endpoint}"
 
         try:
-            # Выполняем синхронный запрос
             response = requests.request(
                 method=method,
                 url=url,
@@ -33,7 +32,6 @@ class APIGateway:
                 timeout=self.timeout
             )
 
-            # Проверяем статус ответа
             if response.status_code >= 400:
                 try:
                     error_text = response.text
@@ -45,7 +43,6 @@ class APIGateway:
                     detail=f"Docker service error: {error_text}"
                 )
 
-            # Возвращаем JSON ответ
             return response.json()
 
         except requests.exceptions.Timeout:
@@ -68,29 +65,3 @@ class APIGateway:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Internal gateway error: {str(e)}"
             )
-
-
-DOCKER_SERVICE_URL = "http://localhost:8000"
-docker_gateway = APIGateway(DOCKER_SERVICE_URL)
-
-
-def main():
-    try:
-        result = docker_gateway.make_request(
-            method="POST",
-            endpoint="/api/v1/manage/container/start",
-            json_data={
-                "container": {
-                    "id": "6ba835ea0ff327b7effc79d54252a7c7bfaf99d71456bcfe697d09622532fe6f"
-                }
-            }
-        )
-        print("Response:", result)
-    except HTTPException as e:
-        print(f"Error: {e.detail}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-
-
-if __name__ == "__main__":
-    main()
