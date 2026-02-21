@@ -12,12 +12,13 @@ logger = logging.getLogger(__name__)
 DOCKER_SERVICE_URL = "http://localhost:8000"
 docker_gateway = APIGateway(DOCKER_SERVICE_URL)
 
+update_containers_service = UpdateContainers()
+
 @router.patch("/update_containers", status_code=status.HTTP_200_OK)
 async def update_containers():
     """
     Обновление информации о контейнерах
     """
-    update_containers_service = UpdateContainers()
     update_containers_service.upload_containers()
     return {"message": "Containers updated successfully"}
 
@@ -38,6 +39,7 @@ async def stop_container(id: str, host: str = 'localhost') -> dict:
             }
         }
     )
+    update_containers_service.upload_containers()
     return result
 
 
@@ -55,6 +57,7 @@ async def remove_container(id: str, force: bool = False, host: str = 'localhost'
             }
         }
     )
+    update_containers_service.upload_containers()
     return result
 
 
@@ -69,6 +72,7 @@ async def start_container(id: str, host: str = 'localhost') -> dict:
             }
         }
     )
+    update_containers_service.upload_containers()
     return result
 
 
@@ -84,6 +88,7 @@ async def remove_volume(volume_name: str, force: bool = False, host: str = 'loca
             "volume_name": volume_name
         }
     )
+    update_containers_service.upload_containers()
     return result
 
 
@@ -93,6 +98,7 @@ async def prune_volumes(host: str = 'localhost') -> dict:
         method="POST",
         endpoint="/api/v1/manage/volumes/prune"
     )
+    update_containers_service.upload_containers()
     return result
 
 
@@ -108,6 +114,7 @@ async def remove_image(image_id_or_name: str, force: bool = False, host: str = '
             "image_id_or_name": image_id_or_name
         }
     )
+    update_containers_service.upload_containers()
     return result
 
 
@@ -117,6 +124,7 @@ async def cleanup_system(host: str = 'localhost') -> dict:
         method="POST",
         endpoint="/api/v1/manage/system/cleanup"
     )
+    update_containers_service.upload_containers()
     return result
 
 

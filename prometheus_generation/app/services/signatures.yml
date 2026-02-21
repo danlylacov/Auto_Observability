@@ -1,0 +1,615 @@
+# КОНФИГУРАЦИЯ ЭКСПОРТЕРОВ PROMETHEUS ДЛЯ РАЗЛИЧНЫХ СТЕКОВ
+# Формат: stack_name -> конфигурация экспортера
+
+# Databases
+postgresql:
+  job_name_suffix: "_postgres"
+  exporter_port: 9187
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/postgres-exporter:latest"
+  env_vars:
+    DATA_SOURCE_NAME: "postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
+  # Опционально: можно указать шаблон для DATA_SOURCE_NAME
+  env_template: "postgresql://{user}:{password}@{host}:{port}/{database}?sslmode=disable"
+
+mysql:
+  job_name_suffix: "_mysql"
+  exporter_port: 9104
+  metrics_path: "/metrics"
+  exporter_image: "prom/mysqld-exporter:latest"
+  env_vars:
+    DATA_SOURCE_NAME: "user:password@(localhost:3306)/"
+
+mariadb:
+  job_name_suffix: "_mariadb"
+  exporter_port: 9104
+  metrics_path: "/metrics"
+  exporter_image: "prom/mysqld-exporter:latest"
+
+mongodb:
+  job_name_suffix: "_mongodb"
+  exporter_port: 9216
+  metrics_path: "/metrics"
+  exporter_image: "percona/mongodb_exporter:latest"
+
+redis:
+  job_name_suffix: "_redis"
+  exporter_port: 9121
+  metrics_path: "/metrics"
+  exporter_image: "oliver006/redis_exporter:latest"
+
+cassandra:
+  job_name_suffix: "_cassandra"
+  exporter_port: 9308
+  metrics_path: "/metrics"
+  exporter_image: "criteo/cassandra_exporter:latest"
+
+clickhouse:
+  job_name_suffix: "_clickhouse"
+  exporter_port: 9116
+  metrics_path: "/metrics"
+  exporter_image: "f1yegor/clickhouse-exporter:latest"
+
+couchdb:
+  job_name_suffix: "_couchdb"
+  exporter_port: 9984
+  metrics_path: "/metrics"
+  exporter_image: "gesellix/couchdb-exporter:latest"
+
+influxdb:
+  job_name_suffix: "_influxdb"
+  exporter_port: 9122
+  metrics_path: "/metrics"
+  exporter_image: "prom/influxdb-exporter:latest"
+
+neo4j:
+  job_name_suffix: "_neo4j"
+  exporter_port: 2004
+  metrics_path: "/metrics"
+  exporter_image: "neo4j/neo4j-prometheus-exporter:latest"
+
+arangodb:
+  job_name_suffix: "_arangodb"
+  exporter_port: 9101
+  metrics_path: "/metrics"
+  exporter_image: "arangodb/arangodb-exporter:latest"
+
+couchbase:
+  job_name_suffix: "_couchbase"
+  exporter_port: 9091
+  metrics_path: "/metrics"
+  exporter_image: "couchbase/couchbase-exporter:latest"
+
+memcached:
+  job_name_suffix: "_memcached"
+  exporter_port: 9150
+  metrics_path: "/metrics"
+  exporter_image: "prom/memcached-exporter:latest"
+
+cratedb:
+  job_name_suffix: "_cratedb"
+  exporter_port: 9090
+  metrics_path: "/metrics"
+  exporter_image: "crate/crate-exporter:latest"
+
+rethinkdb:
+  job_name_suffix: "_rethinkdb"
+  exporter_port: 9090
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/rethinkdb-exporter:latest"
+
+orientdb:
+  job_name_suffix: "_orientdb"
+  exporter_port: 9090
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/orientdb-exporter:latest"
+
+timescaledb:
+  job_name_suffix: "_timescaledb"
+  exporter_port: 9187
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/postgres-exporter:latest"
+
+# Message Brokers
+rabbitmq:
+  job_name_suffix: "_rabbitmq"
+  exporter_port: 9419
+  metrics_path: "/metrics"
+  exporter_image: "kbudde/rabbitmq-exporter:latest"
+
+kafka:
+  job_name_suffix: "_kafka"
+  exporter_port: 9308
+  metrics_path: "/metrics"
+  exporter_image: "danielqsj/kafka-exporter:latest"
+
+nats:
+  job_name_suffix: "_nats"
+  exporter_port: 7777
+  metrics_path: "/metrics"
+  exporter_image: "natsio/prometheus-nats-exporter:latest"
+
+activemq:
+  job_name_suffix: "_activemq"
+  exporter_port: 11099
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/activemq-exporter:latest"
+
+pulsar:
+  job_name_suffix: "_pulsar"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "apachepulsar/pulsar:latest"
+
+mqtt:
+  job_name_suffix: "_mqtt"
+  exporter_port: 1883
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/mosquitto-exporter:latest"
+
+rocketmq:
+  job_name_suffix: "_rocketmq"
+  exporter_port: 5557
+  metrics_path: "/metrics"
+  exporter_image: "apache/rocketmq-exporter:latest"
+
+# Web Servers & Proxies
+nginx:
+  job_name_suffix: "_nginx"
+  exporter_port: 9113
+  metrics_path: "/metrics"
+  exporter_image: "nginx/nginx-prometheus-exporter:latest"
+
+apache:
+  job_name_suffix: "_apache"
+  exporter_port: 9117
+  metrics_path: "/metrics"
+  exporter_image: "lukasmartinelli/apache-exporter:latest"
+
+caddy:
+  job_name_suffix: "_caddy"
+  exporter_port: 2019
+  metrics_path: "/metrics"
+  exporter_image: "caddy:latest"
+
+traefik:
+  job_name_suffix: "_traefik"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "traefik:latest"
+
+haproxy:
+  job_name_suffix: "_haproxy"
+  exporter_port: 8404
+  metrics_path: "/metrics"
+  exporter_image: "prom/haproxy-exporter:latest"
+
+envoy:
+  job_name_suffix: "_envoy"
+  exporter_port: 9901
+  metrics_path: "/stats/prometheus"
+  exporter_image: "envoyproxy/envoy:latest"
+
+istio:
+  job_name_suffix: "_istio"
+  exporter_port: 15020
+  metrics_path: "/stats/prometheus"
+  exporter_image: "istio/proxyv2:latest"
+
+linkerd:
+  job_name_suffix: "_linkerd"
+  exporter_port: 4191
+  metrics_path: "/metrics"
+  exporter_image: "linkerd/proxy:latest"
+
+kong:
+  job_name_suffix: "_kong"
+  exporter_port: 8001
+  metrics_path: "/metrics"
+  exporter_image: "kong:latest"
+
+# Search Engines
+elasticsearch:
+  job_name_suffix: "_elasticsearch"
+  exporter_port: 9114
+  metrics_path: "/metrics"
+  exporter_image: "justwatch/elasticsearch-exporter:latest"
+
+opensearch:
+  job_name_suffix: "_opensearch"
+  exporter_port: 9114
+  metrics_path: "/metrics"
+  exporter_image: "justwatch/elasticsearch-exporter:latest"
+
+solr:
+  job_name_suffix: "_solr"
+  exporter_port: 9983
+  metrics_path: "/metrics"
+  exporter_image: "prometheuscommunity/solr-exporter:latest"
+
+meilisearch:
+  job_name_suffix: "_meilisearch"
+  exporter_port: 7700
+  metrics_path: "/metrics"
+  exporter_image: "meilisearch/meilisearch:latest"
+
+typesense:
+  job_name_suffix: "_typesense"
+  exporter_port: 8108
+  metrics_path: "/metrics"
+  exporter_image: "typesense/typesense:latest"
+
+# Monitoring & Observability
+grafana:
+  job_name_suffix: "_grafana"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "grafana/grafana:latest"
+
+prometheus:
+  job_name_suffix: "_prometheus"
+  exporter_port: 9090
+  metrics_path: "/metrics"
+  exporter_image: "prom/prometheus:latest"
+
+jaeger:
+  job_name_suffix: "_jaeger"
+  exporter_port: 14269
+  metrics_path: "/metrics"
+  exporter_image: "jaegertracing/jaeger:latest"
+
+zipkin:
+  job_name_suffix: "_zipkin"
+  exporter_port: 9411
+  metrics_path: "/metrics"
+  exporter_image: "openzipkin/zipkin:latest"
+
+tempo:
+  job_name_suffix: "_tempo"
+  exporter_port: 3200
+  metrics_path: "/metrics"
+  exporter_image: "grafana/tempo:latest"
+
+thanos:
+  job_name_suffix: "_thanos"
+  exporter_port: 10902
+  metrics_path: "/metrics"
+  exporter_image: "quay.io/thanos/thanos:latest"
+
+alertmanager:
+  job_name_suffix: "_alertmanager"
+  exporter_port: 9093
+  metrics_path: "/metrics"
+  exporter_image: "prom/alertmanager:latest"
+
+node_exporter:
+  job_name_suffix: "_node"
+  exporter_port: 9100
+  metrics_path: "/metrics"
+  exporter_image: "prom/node-exporter:latest"
+
+blackbox_exporter:
+  job_name_suffix: "_blackbox"
+  exporter_port: 9115
+  metrics_path: "/metrics"
+  exporter_image: "prom/blackbox-exporter:latest"
+
+pushgateway:
+  job_name_suffix: "_pushgateway"
+  exporter_port: 9091
+  metrics_path: "/metrics"
+  exporter_image: "prom/pushgateway:latest"
+
+victoriametrics:
+  job_name_suffix: "_victoriametrics"
+  exporter_port: 8428
+  metrics_path: "/metrics"
+  exporter_image: "victoriametrics/victoria-metrics:latest"
+
+telegraf:
+  job_name_suffix: "_telegraf"
+  exporter_port: 9273
+  metrics_path: "/metrics"
+  exporter_image: "telegraf:latest"
+
+datadog:
+  job_name_suffix: "_datadog"
+  exporter_port: 8126
+  metrics_path: "/metrics"
+  exporter_image: "datadog/agent:latest"
+
+sentry:
+  job_name_suffix: "_sentry"
+  exporter_port: 9000
+  metrics_path: "/metrics"
+  exporter_image: "getsentry/sentry:latest"
+
+loki:
+  job_name_suffix: "_loki"
+  exporter_port: 3100
+  metrics_path: "/metrics"
+  exporter_image: "grafana/loki:latest"
+
+# Container Orchestration
+kubernetes:
+  job_name_suffix: "_kubernetes"
+  exporter_port: 6443
+  metrics_path: "/metrics"
+  exporter_image: "prometheus-community/prometheus-kubernetes:latest"
+
+etcd:
+  job_name_suffix: "_etcd"
+  exporter_port: 2379
+  metrics_path: "/metrics"
+  exporter_image: "prom/etcd-exporter:latest"
+
+consul:
+  job_name_suffix: "_consul"
+  exporter_port: 8500
+  metrics_path: "/v1/agent/metrics"
+  exporter_image: "consul:latest"
+
+vault:
+  job_name_suffix: "_vault"
+  exporter_port: 8200
+  metrics_path: "/v1/sys/metrics"
+  exporter_image: "vault:latest"
+
+nomad:
+  job_name_suffix: "_nomad"
+  exporter_port: 4646
+  metrics_path: "/v1/metrics"
+  exporter_image: "hashicorp/nomad:latest"
+
+portainer:
+  job_name_suffix: "_portainer"
+  exporter_port: 9000
+  metrics_path: "/metrics"
+  exporter_image: "portainer/portainer-ce:latest"
+
+# CI/CD
+jenkins:
+  job_name_suffix: "_jenkins"
+  exporter_port: 8080
+  metrics_path: "/prometheus"
+  exporter_image: "jenkins/jenkins:latest"
+
+gitlab_runner:
+  job_name_suffix: "_gitlab_runner"
+  exporter_port: 9252
+  metrics_path: "/metrics"
+  exporter_image: "gitlab/gitlab-runner:latest"
+
+drone:
+  job_name_suffix: "_drone"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "drone/drone:latest"
+
+argocd:
+  job_name_suffix: "_argocd"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "argoproj/argocd:latest"
+
+# Storage
+minio:
+  job_name_suffix: "_minio"
+  exporter_port: 9000
+  metrics_path: "/minio/v2/metrics/cluster"
+  exporter_image: "minio/minio:latest"
+
+ceph:
+  job_name_suffix: "_ceph"
+  exporter_port: 9283
+  metrics_path: "/metrics"
+  exporter_image: "prom/ceph-exporter:latest"
+
+glusterfs:
+  job_name_suffix: "_glusterfs"
+  exporter_port: 9301
+  metrics_path: "/metrics"
+  exporter_image: "prom/gluster-exporter:latest"
+
+# Frameworks & Runtimes (обычно используют стандартные экспортеры)
+python:
+  job_name_suffix: "_python"
+  exporter_port: 8000
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_python:latest"
+
+nodejs:
+  job_name_suffix: "_nodejs"
+  exporter_port: 9090
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_nodejs:latest"
+
+java:
+  job_name_suffix: "_java"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_java:latest"
+
+go:
+  job_name_suffix: "_go"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_golang:latest"
+
+ruby:
+  job_name_suffix: "_ruby"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_ruby:latest"
+
+php:
+  job_name_suffix: "_php"
+  exporter_port: 9000
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_php:latest"
+
+php_fpm:
+  job_name_suffix: "_php_fpm"
+  exporter_port: 9253
+  metrics_path: "/metrics"
+  exporter_image: "hipages/php-fpm_exporter:latest"
+
+dotnet:
+  job_name_suffix: "_dotnet"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "prom/client_dotnet:latest"
+
+# Application Frameworks
+django:
+  job_name_suffix: "_django"
+  exporter_port: 8000
+  metrics_path: "/metrics"
+  exporter_image: "prom/django-prometheus:latest"
+
+flask:
+  job_name_suffix: "_flask"
+  exporter_port: 8000
+  metrics_path: "/metrics"
+  exporter_image: "prom/flask-prometheus:latest"
+
+rails:
+  job_name_suffix: "_rails"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "prom/rails-prometheus:latest"
+
+spring_boot:
+  job_name_suffix: "_spring_boot"
+  exporter_port: 8080
+  metrics_path: "/actuator/prometheus"
+  exporter_image: "springio/spring-boot:latest"
+
+express:
+  job_name_suffix: "_express"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "prom/express-prometheus:latest"
+
+fastapi:
+  job_name_suffix: "_fastapi"
+  exporter_port: 8000
+  metrics_path: "/metrics"
+  exporter_image: "prom/fastapi-prometheus:latest"
+
+laravel:
+  job_name_suffix: "_laravel"
+  exporter_port: 8000
+  metrics_path: "/metrics"
+  exporter_image: "prom/laravel-prometheus:latest"
+
+nextjs:
+  job_name_suffix: "_nextjs"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "prom/nextjs-prometheus:latest"
+
+nuxtjs:
+  job_name_suffix: "_nuxtjs"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "prom/nuxtjs-prometheus:latest"
+
+nestjs:
+  job_name_suffix: "_nestjs"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "prom/nestjs-prometheus:latest"
+
+phoenix:
+  job_name_suffix: "_phoenix"
+  exporter_port: 4000
+  metrics_path: "/metrics"
+  exporter_image: "prom/phoenix-prometheus:latest"
+
+play:
+  job_name_suffix: "_play"
+  exporter_port: 9000
+  metrics_path: "/metrics"
+  exporter_image: "prom/play-prometheus:latest"
+
+react:
+  job_name_suffix: "_react"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "prom/react-prometheus:latest"
+
+telegram_bot:
+  job_name_suffix: "_telegram_bot"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "prom/telegram-bot-prometheus:latest"
+
+# Other Services
+wordpress:
+  job_name_suffix: "_wordpress"
+  exporter_port: 80
+  metrics_path: "/metrics"
+  exporter_image: "wordpress:latest"
+
+drupal:
+  job_name_suffix: "_drupal"
+  exporter_port: 80
+  metrics_path: "/metrics"
+  exporter_image: "drupal:latest"
+
+gitlab:
+  job_name_suffix: "_gitlab"
+  exporter_port: 9090
+  metrics_path: "/-/metrics"
+  exporter_image: "gitlab/gitlab-ce:latest"
+
+gitea:
+  job_name_suffix: "_gitea"
+  exporter_port: 3000
+  metrics_path: "/metrics"
+  exporter_image: "gitea/gitea:latest"
+
+jira:
+  job_name_suffix: "_jira"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "atlassian/jira-software:latest"
+
+confluence:
+  job_name_suffix: "_confluence"
+  exporter_port: 8090
+  metrics_path: "/metrics"
+  exporter_image: "atlassian/confluence:latest"
+
+sonarqube:
+  job_name_suffix: "_sonarqube"
+  exporter_port: 9000
+  metrics_path: "/api/metrics"
+  exporter_image: "sonarqube:latest"
+
+nexus:
+  job_name_suffix: "_nexus"
+  exporter_port: 8081
+  metrics_path: "/metrics"
+  exporter_image: "sonatype/nexus3:latest"
+
+artifactory:
+  job_name_suffix: "_artifactory"
+  exporter_port: 8082
+  metrics_path: "/api/v1/metrics"
+  exporter_image: "jfrog/artifactory-oss:latest"
+
+ghost:
+  job_name_suffix: "_ghost"
+  exporter_port: 2368
+  metrics_path: "/metrics"
+  exporter_image: "ghost:latest"
+
+# Generic HTTP (fallback)
+http_generic:
+  job_name_suffix: "_http"
+  exporter_port: 8080
+  metrics_path: "/metrics"
+  exporter_image: "prom/blackbox-exporter:latest"
+
