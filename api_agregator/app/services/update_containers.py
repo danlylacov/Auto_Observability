@@ -11,8 +11,7 @@ class UpdateContainers:
     Сервисный класс для обновления информации о контейнерах
     """
 
-    def __init__(self, hosts: list = None):
-        self.hosts = hosts
+    def __init__(self):
 
         load_dotenv()
         self.docker_api_url = os.getenv('DOCKER_API_URL')
@@ -20,17 +19,14 @@ class UpdateContainers:
         self.docker_api = APIGateway(self.docker_api_url)
         self.docker_classification_api = APIGateway(self.docker_classification_api_url)
 
-    def _get_host_containers(self, host: dict[str, str] = None) -> dict:
+    def _get_host_containers(self) -> dict:
         """
         Получение всех контейнеров по хосту
         """
         result = {}
-        host_params = {
-            "address": host['address'],
-            "username": host['username']
-        } if host else None
 
-        containers = self.docker_api.make_request(method="POST", endpoint='/api/v1/discover/', params=host_params)['containers']
+
+        containers = self.docker_api.make_request(method="POST", endpoint='/api/v1/discover/')['containers']
 
         for container in containers:
             classification = self._classificate_container(container)
@@ -60,9 +56,7 @@ class UpdateContainers:
         """
         Обновление информации о контейнерах в Redis
         """
-        hosts = self.hosts if self.hosts else [None]
-        for host in hosts:
-            containers = self._get_host_containers(host)
-            docker_containers = DockerContainers()
-            docker_containers.delete_all_containers_by_host(host if host else 'localhost')
-            docker_containers.upload_containers(containers, host if host else 'localhost')
+        containers = self._get_host_containers()
+        docker_containers = DockerContainers()
+        docker_containers.delete_all_containers_by_host()
+        docker_containers.upload_containers(containers)

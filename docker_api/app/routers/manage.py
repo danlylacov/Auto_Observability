@@ -3,7 +3,6 @@ from typing import Optional
 
 from fastapi import APIRouter, status, HTTPException
 from app.services.docker_manager import DockerManager
-from app.models.remote_docker_host import RemoteHost
 from app.models.manage_models import Container
 
 router = APIRouter()
@@ -11,14 +10,13 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_docker_manager(remote_host: Optional[RemoteHost]= None) -> DockerManager:
-    return DockerManager(f'{remote_host.username}@{remote_host.address}') if remote_host \
-        else DockerManager()
+def get_docker_manager() -> DockerManager:
+    return DockerManager()
 
 @router.post("/container/stop", status_code=status.HTTP_200_OK)
-async def stop_container(container: Container, remote_host: Optional[RemoteHost] = None):
+async def stop_container(container: Container):
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.stop_container(container.id)
         return {"message": f"Container {container.id} stopped successfully", "result": result}
     except Exception as e:
@@ -30,9 +28,9 @@ async def stop_container(container: Container, remote_host: Optional[RemoteHost]
 
 
 @router.delete("/container/remove", status_code=status.HTTP_200_OK)
-async def remove_container(container: Container, force: bool = False, remote_host: Optional[RemoteHost] = None):
+async def remove_container(container: Container, force: bool = False):
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.remove_container(container.id, force=force)
         return {"message": f"Container {container.id} removed successfully", "result": result}
     except Exception as e:
@@ -43,9 +41,9 @@ async def remove_container(container: Container, force: bool = False, remote_hos
         )
 
 @router.post("/container/start", status_code=status.HTTP_200_OK)
-async def start_container(container: Container, remote_host: Optional[RemoteHost] = None):
+async def start_container(container: Container):
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.start_container(container.id)
         return {"message": f"Container {container.id} started successfully", "result": result}
     except Exception as e:
@@ -57,9 +55,9 @@ async def start_container(container: Container, remote_host: Optional[RemoteHost
 
 
 @router.delete("/volume/remove", status_code=status.HTTP_200_OK)
-async def remove_volume(volume_name: str, force: bool = False, remote_host: Optional[RemoteHost] = None):
+async def remove_volume(volume_name: str, force: bool = False):
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.remove_volume(volume_name, force=force)
         return {"message": f"Volume {volume_name} removed successfully", "result": result}
     except Exception as e:
@@ -71,9 +69,9 @@ async def remove_volume(volume_name: str, force: bool = False, remote_host: Opti
 
 
 @router.post("/volumes/prune", status_code=status.HTTP_200_OK)
-async def prune_volumes(remote_host: Optional[RemoteHost] = None):
+async def prune_volumes():
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.prune_volumes()
         return {"message": "Unused volumes pruned successfully", "result": result}
     except Exception as e:
@@ -85,9 +83,9 @@ async def prune_volumes(remote_host: Optional[RemoteHost] = None):
 
 
 @router.delete("/image/remove", status_code=status.HTTP_200_OK)
-async def remove_image(image_id_or_name: str, force: bool = False, remote_host: Optional[RemoteHost] = None):
+async def remove_image(image_id_or_name: str, force: bool = False):
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.remove_image(image_id_or_name, force=force)
         return {"message": f"Image {image_id_or_name} removed successfully", "result": result}
     except Exception as e:
@@ -99,9 +97,9 @@ async def remove_image(image_id_or_name: str, force: bool = False, remote_host: 
 
 
 @router.post("/system/cleanup", status_code=status.HTTP_200_OK)
-async def cleanup_system(remote_host: Optional[RemoteHost] = None):
+async def cleanup_system():
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
         result = docker_manager.cleanup_system()
         return {"message": "System cleanup completed successfully", "result": result}
     except Exception as e:

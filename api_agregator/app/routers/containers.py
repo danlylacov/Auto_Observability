@@ -23,13 +23,13 @@ async def update_containers():
     return {"message": "Containers updated successfully"}
 
 @router.get("/containers", status_code=status.HTTP_200_OK)
-async def get_containers(host: str = 'localhost') -> dict:
+async def get_containers() -> dict:
     docker_containers = DockerContainers()
     data = docker_containers.get_containers(host)
     return data
 
 @router.post("/container/stop", status_code=status.HTTP_200_OK)
-async def stop_container(id: str, host: str = 'localhost') -> dict:
+async def stop_container(id: str) -> dict:
     result = docker_gateway.make_request(
         method="POST",
         endpoint="/api/v1/manage/container/stop",
@@ -44,7 +44,7 @@ async def stop_container(id: str, host: str = 'localhost') -> dict:
 
 
 @router.delete("/container/remove", status_code=status.HTTP_200_OK)
-async def remove_container(id: str, force: bool = False, host: str = 'localhost') -> dict:
+async def remove_container(id: str, force: bool = False) -> dict:
     result = docker_gateway.make_request(
         method="DELETE",
         endpoint="/api/v1/manage/container/remove",
@@ -62,7 +62,7 @@ async def remove_container(id: str, force: bool = False, host: str = 'localhost'
 
 
 @router.post("/container/start", status_code=status.HTTP_200_OK)
-async def start_container(id: str, host: str = 'localhost') -> dict:
+async def start_container(id: str) -> dict:
     result = docker_gateway.make_request(
         method="POST",
         endpoint="/api/v1/manage/container/start",
@@ -77,7 +77,7 @@ async def start_container(id: str, host: str = 'localhost') -> dict:
 
 
 @router.delete("/volume/remove", status_code=status.HTTP_200_OK)
-async def remove_volume(volume_name: str, force: bool = False, host: str = 'localhost') -> dict:
+async def remove_volume(volume_name: str, force: bool = False) -> dict:
     result = docker_gateway.make_request(
         method="DELETE",
         endpoint="/api/v1/manage/volume/remove",
@@ -93,7 +93,7 @@ async def remove_volume(volume_name: str, force: bool = False, host: str = 'loca
 
 
 @router.post("/volumes/prune", status_code=status.HTTP_200_OK)
-async def prune_volumes(host: str = 'localhost') -> dict:
+async def prune_volumes() -> dict:
     result = docker_gateway.make_request(
         method="POST",
         endpoint="/api/v1/manage/volumes/prune"
@@ -103,7 +103,7 @@ async def prune_volumes(host: str = 'localhost') -> dict:
 
 
 @router.delete("/image/remove", status_code=status.HTTP_200_OK)
-async def remove_image(image_id_or_name: str, force: bool = False, host: str = 'localhost') -> dict:
+async def remove_image(image_id_or_name: str, force: bool = False) -> dict:
     result = docker_gateway.make_request(
         method="DELETE",
         endpoint="/api/v1/manage/image/remove",
@@ -119,7 +119,7 @@ async def remove_image(image_id_or_name: str, force: bool = False, host: str = '
 
 
 @router.post("/system/cleanup", status_code=status.HTTP_200_OK)
-async def cleanup_system(host: str = 'localhost') -> dict:
+async def cleanup_system() -> dict:
     result = docker_gateway.make_request(
         method="POST",
         endpoint="/api/v1/manage/system/cleanup"

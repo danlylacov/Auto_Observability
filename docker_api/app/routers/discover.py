@@ -2,21 +2,19 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, status, HTTPException
 from app.services.docker_manager import DockerManager
-from app.models.remote_docker_host import RemoteHost
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def get_docker_manager(remote_host: Optional[RemoteHost] = None) -> DockerManager:
-    return DockerManager(f'{remote_host.username}@{remote_host.address}') if remote_host \
-        else DockerManager()
+def get_docker_manager() -> DockerManager:
+    return DockerManager()
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_item(remote_host: RemoteHost = None):
+async def get_containers():
     try:
-        docker_manager = get_docker_manager(remote_host)
+        docker_manager = get_docker_manager()
 
         try:
             docker_manager.client.ping()

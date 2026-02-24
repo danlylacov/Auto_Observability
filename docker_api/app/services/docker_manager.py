@@ -4,19 +4,8 @@ import docker
 
 
 class DockerManager:
-    def __init__(self, remote_host: str = None):
-        """
-        :param remote_host: строка вида 'user@192.168.1.100' или None для локального запуска
-        """
-        if remote_host and self._is_valid_host(remote_host):
-            self.client = docker.DockerClient(base_url=f"ssh://{remote_host}")
-        else:
-            self.client = docker.from_env()
-
-    @staticmethod
-    def _is_valid_host(host: str) -> bool:
-        pattern = r"^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$"
-        return bool(re.match(pattern, host))
+    def __init__(self):
+        self.client = docker.from_env()
 
     def discover_containers(self) -> list:
         """
@@ -27,7 +16,7 @@ class DockerManager:
             all_data.append(container.attrs)
         return all_data
 
-    def start_container(self, container_id_or_name: str) -> None:
+    def start_container(self, container_id_or_name: str) -> str:
         """Запустить контейнер"""
         try:
             container = self.client.containers.get(container_id_or_name)
@@ -63,11 +52,11 @@ class DockerManager:
         except Exception as e:
             return f"Ошибка при удалении тома: {e}"
 
-    def prune_volumes(self) -> None:
+    def prune_volumes(self) -> dict:
         """Удалить ВСЕ неиспользуемые тома (очистка)"""
         return self.client.volumes.prune()
 
-    def remove_image(self, image_id_or_name: str, force: bool = False) -> None:
+    def remove_image(self, image_id_or_name: str, force: bool = False) -> str:
         """Удалить образ"""
         try:
             self.client.images.remove(image=image_id_or_name, force=force)
