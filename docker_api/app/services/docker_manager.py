@@ -1,4 +1,5 @@
 import re
+from typing import Optional, Dict
 
 import docker
 
@@ -24,6 +25,62 @@ class DockerManager:
             return f"Контейнер {container_id_or_name} запущен."
         except docker.errors.NotFound:
             return "Ошибка: Контейнер не найден."
+
+    from typing import Optional, Dict, Any, Literal
+
+    def pull_and_run_container(
+            self,
+            image_name: str,
+            command: Optional[str] = None,
+            name: Optional[str] = None,
+            detach: bool = True,
+            ports: Optional[Dict[str, int]] = None,
+            volumes: Optional[Dict[str, Dict[str, str]]] = None,
+            environment: Optional[Dict[str, str]] = None
+    ) -> dict:
+        """
+        Пуллит образ и запускает контейнер
+        """
+        try:
+            try:
+                self.client.images.get(image_name)
+                pull_status = "использован локальный образ"
+            except docker.errors.ImageNotFound:
+                print(f"Образ {image_name} не найден локально. Выполняется pull...")
+                self.client.images.pull(image_name)
+                pull_status = "образ успешно загружен"
+
+            try:
+                container = self.client.containers.get(name)
+
+                if container.status == "running":
+                    return {"status": "Контейнер уже запущен"}
+            except (Exception,):
+                pass
+
+            run_kwargs = {
+                "image": image_name,
+                "detach": detach
+            }
+
+            if command is not None:
+                run_kwargs["command"] = command
+            if name is not None:
+                run_kwargs["name"] = name
+            if ports is not None:
+                run_kwargs["ports"] = ports
+            if volumes is not None:
+                run_kwargs["volumes"] = volumes
+            if environment is not None:
+                run_kwargs["environment"] = environment
+
+            container = self.client.containers.run(**run_kwargs)
+
+            container_id = container.short_id if hasattr(container, 'short_id') else str(container.id)[:12]
+            return {'container_id': container_id, 'pull_status': pull_status}
+
+        except Exception as e:
+            return {'error': f"Неожиданная ошибка при запуске контейнера: {e}"}
 
     def stop_container(self, container_id_or_name: str) -> None:
         """Остановить контейнер"""

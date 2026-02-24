@@ -234,4 +234,5 @@ class PrometheusConfigGenerator:
         """
         Извлекает информацию об экспортере из конфигурации
         """
+        print(config)
         return config.get('exporter_info')

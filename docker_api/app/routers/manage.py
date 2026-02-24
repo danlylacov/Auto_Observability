@@ -3,7 +3,8 @@ from typing import Optional
 
 from fastapi import APIRouter, status, HTTPException
 from app.services.docker_manager import DockerManager
-from app.models.manage_models import Container
+from app.models.manage_models import Container, FullContainer
+
 
 router = APIRouter()
 
@@ -52,6 +53,30 @@ async def start_container(container: Container):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start container: {str(e)}"
         )
+
+
+@router.post("/container/pull_and_run", status_code=status.HTTP_200_OK)
+async def pull_and_run_container(container: FullContainer):
+    try:
+        docker_manager = get_docker_manager()
+        result = docker_manager.pull_and_run_container(
+            container.image_name,
+            container.command,
+            container.name,
+            container.detach,
+            container.ports,
+            container.volumes,
+            container.environment
+        )
+        return {"result": result}
+    except Exception as e:
+        logger.error(f"Error pulling and starting container {container.id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start container: {str(e)}"
+        )
+
+
 
 
 @router.delete("/volume/remove", status_code=status.HTTP_200_OK)
