@@ -8,3 +8,8 @@ pydantic>=2.0.0
 # YAML парсер
 pyyaml>=6.0
 
+# S3
+boto3
+
+
+

@@ -1,22 +1,12 @@
 import re
+from typing import Optional, Dict
 
 import docker
 
 
 class DockerManager:
-    def __init__(self, remote_host: str = None):
-        """
-        :param remote_host: строка вида 'user@192.168.1.100' или None для локального запуска
-        """
-        if remote_host and self._is_valid_host(remote_host):
-            self.client = docker.DockerClient(base_url=f"ssh://{remote_host}")
-        else:
-            self.client = docker.from_env()
-
-    @staticmethod
-    def _is_valid_host(host: str) -> bool:
-        pattern = r"^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$"
-        return bool(re.match(pattern, host))
+    def __init__(self):
+        self.client = docker.from_env()
 
     def discover_containers(self) -> list:
         """
@@ -27,7 +17,7 @@ class DockerManager:
             all_data.append(container.attrs)
         return all_data
 
-    def start_container(self, container_id_or_name: str) -> None:
+    def start_container(self, container_id_or_name: str) -> str:
         """Запустить контейнер"""
         try:
             container = self.client.containers.get(container_id_or_name)
@@ -35,6 +25,62 @@ class DockerManager:
             return f"Контейнер {container_id_or_name} запущен."
         except docker.errors.NotFound:
             return "Ошибка: Контейнер не найден."
+
+    from typing import Optional, Dict, Any, Literal
+
+    def pull_and_run_container(
+            self,
+            image_name: str,
+            command: Optional[str] = None,
+            name: Optional[str] = None,
+            detach: bool = True,
+            ports: Optional[Dict[str, int]] = None,
+            volumes: Optional[Dict[str, Dict[str, str]]] = None,
+            environment: Optional[Dict[str, str]] = None
+    ) -> dict:
+        """
+        Пуллит образ и запускает контейнер
+        """
+        try:
+            try:
+                self.client.images.get(image_name)
+                pull_status = "использован локальный образ"
+            except docker.errors.ImageNotFound:
+                print(f"Образ {image_name} не найден локально. Выполняется pull...")
+                self.client.images.pull(image_name)
+                pull_status = "образ успешно загружен"
+
+            try:
+                container = self.client.containers.get(name)
+
+                if container.status == "running":
+                    return {"status": "Контейнер уже запущен"}
+            except (Exception,):
+                pass
+
+            run_kwargs = {
+                "image": image_name,
+                "detach": detach
+            }
+
+            if command is not None:
+                run_kwargs["command"] = command
+            if name is not None:
+                run_kwargs["name"] = name
+            if ports is not None:
+                run_kwargs["ports"] = ports
+            if volumes is not None:
+                run_kwargs["volumes"] = volumes
+            if environment is not None:
+                run_kwargs["environment"] = environment
+
+            container = self.client.containers.run(**run_kwargs)
+
+            container_id = container.short_id if hasattr(container, 'short_id') else str(container.id)[:12]
+            return {'container_id': container_id, 'pull_status': pull_status}
+
+        except Exception as e:
+            return {'error': f"Неожиданная ошибка при запуске контейнера: {e}"}
 
     def stop_container(self, container_id_or_name: str) -> None:
         """Остановить контейнер"""
@@ -63,11 +109,11 @@ class DockerManager:
         except Exception as e:
             return f"Ошибка при удалении тома: {e}"
 
-    def prune_volumes(self) -> None:
+    def prune_volumes(self) -> dict:
         """Удалить ВСЕ неиспользуемые тома (очистка)"""
         return self.client.volumes.prune()
 
-    def remove_image(self, image_id_or_name: str, force: bool = False) -> None:
+    def remove_image(self, image_id_or_name: str, force: bool = False) -> str:
         """Удалить образ"""
         try:
             self.client.images.remove(image=image_id_or_name, force=force)
