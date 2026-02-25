@@ -13,6 +13,11 @@ docker>=6.1.0
 # databases
 redis
 
+# PostgreSQL
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+psycopg2
+
 # Brokers
 celery
 

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.routers import containers
+from app.routers import prometheus
 
 app = FastAPI(
     title="Auto Observability API",
@@ -9,6 +10,7 @@ app = FastAPI(
 
 
 app.include_router(containers.router, prefix="/api/v1/containers", tags=["containers"])
+app.include_router(prometheus.router, prefix="/api/v1/prometheus", tags=["prometheus"])
 
 
 @app.get("/")

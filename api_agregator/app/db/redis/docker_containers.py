@@ -7,6 +7,7 @@ class DockerContainers(RedisConnection):
     """
     Класс для управления информацией о DockerContainers в Redis
     """
+
     def __init__(self) -> None:
         super().__init__()
         self.client = self.connect()
@@ -49,6 +50,14 @@ class DockerContainers(RedisConnection):
                 containers[container_id] = json.loads(value)
         return containers
 
+    def get_container(self, container_id: str) -> dict:
+        pattern = f'container:{container_id}'
+        container_key = self.client.keys(pattern)
+        if not container_key:
+            return {}
+        container = self.client.get(pattern)
+        return container
+
     def delete_all_containers_by_host(self) -> int:
         """
         Удаляет все ключи с префиксом 'container:'
@@ -60,7 +69,3 @@ class DockerContainers(RedisConnection):
             return 0
         deleted_count = self.client.delete(*container_keys)
         return deleted_count
-
-
-
-

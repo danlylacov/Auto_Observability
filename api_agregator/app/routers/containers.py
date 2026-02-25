@@ -1,4 +1,7 @@
 import logging
+import os
+
+from dotenv import load_dotenv
 from fastapi import APIRouter, status
 
 from app.services.update_containers import UpdateContainers
@@ -6,13 +9,16 @@ from app.db.redis.docker_containers import DockerContainers
 from app.services.api_getaway import APIGateway
 
 
+load_dotenv()
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-DOCKER_SERVICE_URL = "http://localhost:8000"
+DOCKER_SERVICE_URL = os.getenv('DOCKER_API_URL')
 docker_gateway = APIGateway(DOCKER_SERVICE_URL)
 
 update_containers_service = UpdateContainers()
+
 
 @router.patch("/update_containers", status_code=status.HTTP_200_OK)
 async def update_containers():
@@ -22,11 +28,13 @@ async def update_containers():
     update_containers_service.upload_containers()
     return {"message": "Containers updated successfully"}
 
+
 @router.get("/containers", status_code=status.HTTP_200_OK)
 async def get_containers() -> dict:
     docker_containers = DockerContainers()
     data = docker_containers.get_containers(host)
     return data
+
 
 @router.post("/container/stop", status_code=status.HTTP_200_OK)
 async def stop_container(id: str) -> dict:
@@ -126,7 +134,3 @@ async def cleanup_system() -> dict:
     )
     update_containers_service.upload_containers()
     return result
-
-
-
-
