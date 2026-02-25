@@ -132,5 +132,4 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
     )
 
     print("start_exporter", start_exporter)
-
     return start_exporter
