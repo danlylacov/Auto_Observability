@@ -19,96 +19,142 @@ mysql:
   exporter_image: "prom/mysqld-exporter:latest"
   env_vars:
     DATA_SOURCE_NAME: "user:password@(localhost:3306)/"
+  env_template: "{user}:{password}@({host}:{port})/{database}"
 
 mariadb:
   job_name_suffix: "_mariadb"
   exporter_port: 9104
   metrics_path: "/metrics"
   exporter_image: "prom/mysqld-exporter:latest"
+  env_vars:
+    DATA_SOURCE_NAME: "user:password@(localhost:3306)/"
+  env_template: "{user}:{password}@({host}:{port})/{database}"
 
 mongodb:
   job_name_suffix: "_mongodb"
   exporter_port: 9216
   metrics_path: "/metrics"
   exporter_image: "percona/mongodb_exporter:latest"
+  env_vars:
+    MONGODB_URI: "mongodb://localhost:27017"
+  env_template: "mongodb://{user}:{password}@{host}:{port}/{database}"
 
 redis:
   job_name_suffix: "_redis"
   exporter_port: 9121
   metrics_path: "/metrics"
   exporter_image: "oliver006/redis_exporter:latest"
+  env_vars:
+    REDIS_ADDR: "redis://localhost:6379"
+  env_template: "redis://{host}:{port}"
 
 cassandra:
   job_name_suffix: "_cassandra"
   exporter_port: 9308
   metrics_path: "/metrics"
   exporter_image: "criteo/cassandra_exporter:latest"
+  env_vars:
+    CASSANDRA_HOSTS: "localhost:9042"
+  env_template: "{host}:{port}"
 
 clickhouse:
   job_name_suffix: "_clickhouse"
   exporter_port: 9116
   metrics_path: "/metrics"
   exporter_image: "f1yegor/clickhouse-exporter:latest"
+  env_vars:
+    CLICKHOUSE_URL: "http://localhost:8123"
+  env_template: "http://{host}:{port}"
 
 couchdb:
   job_name_suffix: "_couchdb"
   exporter_port: 9984
   metrics_path: "/metrics"
   exporter_image: "gesellix/couchdb-exporter:latest"
+  env_vars:
+    COUCHDB_URL: "http://localhost:5984"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 influxdb:
   job_name_suffix: "_influxdb"
   exporter_port: 9122
   metrics_path: "/metrics"
   exporter_image: "prom/influxdb-exporter:latest"
+  env_vars:
+    INFLUXDB_URL: "http://localhost:8086"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 neo4j:
   job_name_suffix: "_neo4j"
   exporter_port: 2004
   metrics_path: "/metrics"
   exporter_image: "neo4j/neo4j-prometheus-exporter:latest"
+  env_vars:
+    NEO4J_URI: "bolt://localhost:7687"
+  env_template: "bolt://{user}:{password}@{host}:{port}"
 
 arangodb:
   job_name_suffix: "_arangodb"
   exporter_port: 9101
   metrics_path: "/metrics"
   exporter_image: "arangodb/arangodb-exporter:latest"
+  env_vars:
+    ARANGO_URL: "http://localhost:8529"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 couchbase:
   job_name_suffix: "_couchbase"
   exporter_port: 9091
   metrics_path: "/metrics"
   exporter_image: "couchbase/couchbase-exporter:latest"
+  env_vars:
+    COUCHBASE_URL: "http://localhost:8091"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 memcached:
   job_name_suffix: "_memcached"
   exporter_port: 9150
   metrics_path: "/metrics"
   exporter_image: "prom/memcached-exporter:latest"
+  env_vars:
+    MEMCACHED_ADDR: "localhost:11211"
+  env_template: "{host}:{port}"
 
 cratedb:
   job_name_suffix: "_cratedb"
   exporter_port: 9090
   metrics_path: "/metrics"
   exporter_image: "crate/crate-exporter:latest"
+  env_vars:
+    CRATE_URL: "http://localhost:4200"
+  env_template: "http://{host}:{port}"
 
 rethinkdb:
   job_name_suffix: "_rethinkdb"
   exporter_port: 9090
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/rethinkdb-exporter:latest"
+  env_vars:
+    RETHINKDB_URL: "localhost:28015"
+  env_template: "{host}:{port}"
 
 orientdb:
   job_name_suffix: "_orientdb"
   exporter_port: 9090
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/orientdb-exporter:latest"
+  env_vars:
+    ORIENTDB_URL: "http://localhost:2480"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 timescaledb:
   job_name_suffix: "_timescaledb"
   exporter_port: 9187
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/postgres-exporter:latest"
+  env_vars:
+    DATA_SOURCE_NAME: "postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
+  env_template: "postgresql://{user}:{password}@{host}:{port}/{database}?sslmode=disable"
 
 # Message Brokers
 rabbitmq:
@@ -116,42 +162,63 @@ rabbitmq:
   exporter_port: 9419
   metrics_path: "/metrics"
   exporter_image: "kbudde/rabbitmq-exporter:latest"
+  env_vars:
+    RABBITMQ_URL: "http://localhost:15692"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 kafka:
   job_name_suffix: "_kafka"
   exporter_port: 9308
   metrics_path: "/metrics"
   exporter_image: "danielqsj/kafka-exporter:latest"
+  env_vars:
+    KAFKA_BROKERS: "localhost:9092"
+  env_template: "{host}:{port}"
 
 nats:
   job_name_suffix: "_nats"
   exporter_port: 7777
   metrics_path: "/metrics"
   exporter_image: "natsio/prometheus-nats-exporter:latest"
+  env_vars:
+    NATS_URL: "nats://localhost:4222"
+  env_template: "nats://{host}:{port}"
 
 activemq:
   job_name_suffix: "_activemq"
   exporter_port: 11099
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/activemq-exporter:latest"
+  env_vars:
+    ACTIVEMQ_URL: "http://localhost:8161"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 pulsar:
   job_name_suffix: "_pulsar"
   exporter_port: 8080
   metrics_path: "/metrics"
   exporter_image: "apachepulsar/pulsar:latest"
+  env_vars:
+    PULSAR_URL: "http://localhost:8080"
+  env_template: "http://{host}:{port}"
 
 mqtt:
   job_name_suffix: "_mqtt"
   exporter_port: 1883
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/mosquitto-exporter:latest"
+  env_vars:
+    MQTT_URL: "tcp://localhost:1883"
+  env_template: "tcp://{host}:{port}"
 
 rocketmq:
   job_name_suffix: "_rocketmq"
   exporter_port: 5557
   metrics_path: "/metrics"
   exporter_image: "apache/rocketmq-exporter:latest"
+  env_vars:
+    ROCKETMQ_URL: "http://localhost:8080"
+  env_template: "http://{host}:{port}"
 
 # Web Servers & Proxies
 nginx:
@@ -159,30 +226,45 @@ nginx:
   exporter_port: 9113
   metrics_path: "/metrics"
   exporter_image: "nginx/nginx-prometheus-exporter:latest"
+  env_vars:
+    NGINX_SCRAPE_URI: "http://localhost:8080/stub_status"
+  env_template: "http://{host}:{port}/stub_status"
 
 apache:
   job_name_suffix: "_apache"
   exporter_port: 9117
   metrics_path: "/metrics"
   exporter_image: "lukasmartinelli/apache-exporter:latest"
+  env_vars:
+    APACHE_SCRAPE_URI: "http://localhost:80/server-status"
+  env_template: "http://{host}:{port}/server-status"
 
 caddy:
   job_name_suffix: "_caddy"
   exporter_port: 2019
   metrics_path: "/metrics"
   exporter_image: "caddy:latest"
+  env_vars:
+    CADDY_URL: "http://localhost:2019/metrics"
+  env_template: "http://{host}:{port}/metrics"
 
 traefik:
   job_name_suffix: "_traefik"
   exporter_port: 8080
   metrics_path: "/metrics"
   exporter_image: "traefik:latest"
+  env_vars:
+    TRAEFIK_URL: "http://localhost:8080/metrics"
+  env_template: "http://{host}:{port}/metrics"
 
 haproxy:
   job_name_suffix: "_haproxy"
   exporter_port: 8404
   metrics_path: "/metrics"
   exporter_image: "prom/haproxy-exporter:latest"
+  env_vars:
+    HAPROXY_URL: "http://localhost:8404/stats"
+  env_template: "http://{host}:{port}/stats"
 
 envoy:
   job_name_suffix: "_envoy"
@@ -214,30 +296,45 @@ elasticsearch:
   exporter_port: 9114
   metrics_path: "/metrics"
   exporter_image: "justwatch/elasticsearch-exporter:latest"
+  env_vars:
+    ES_URI: "http://localhost:9200"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 opensearch:
   job_name_suffix: "_opensearch"
   exporter_port: 9114
   metrics_path: "/metrics"
   exporter_image: "justwatch/elasticsearch-exporter:latest"
+  env_vars:
+    OPENSEARCH_URI: "http://localhost:9200"
+  env_template: "http://{user}:{password}@{host}:{port}"
 
 solr:
   job_name_suffix: "_solr"
   exporter_port: 9983
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/solr-exporter:latest"
+  env_vars:
+    SOLR_URL: "http://localhost:8983"
+  env_template: "http://{host}:{port}"
 
 meilisearch:
   job_name_suffix: "_meilisearch"
   exporter_port: 7700
   metrics_path: "/metrics"
   exporter_image: "meilisearch/meilisearch:latest"
+  env_vars:
+    MEILISEARCH_URL: "http://localhost:7700"
+  env_template: "http://{host}:{port}"
 
 typesense:
   job_name_suffix: "_typesense"
   exporter_port: 8108
   metrics_path: "/metrics"
   exporter_image: "typesense/typesense:latest"
+  env_vars:
+    TYPESENSE_URL: "http://localhost:8108"
+  env_template: "http://{host}:{port}"
 
 # Monitoring & Observability
 grafana:

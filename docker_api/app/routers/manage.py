@@ -66,7 +66,8 @@ async def pull_and_run_container(container: FullContainer):
             container.detach,
             container.ports,
             container.volumes,
-            container.environment
+            container.environment,
+            container.network
         )
         return {"result": result}
     except Exception as e:
