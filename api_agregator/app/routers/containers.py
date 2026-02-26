@@ -32,7 +32,7 @@ async def update_containers():
 @router.get("/containers", status_code=status.HTTP_200_OK)
 async def get_containers() -> dict:
     docker_containers = DockerContainers()
-    data = docker_containers.get_containers(host)
+    data = docker_containers.get_containers()
     return data
 
 
@@ -42,9 +42,7 @@ async def stop_container(id: str) -> dict:
         method="POST",
         endpoint="/api/v1/manage/container/stop",
         json_data={
-            "container": {
-                "id": id
-            }
+            "id": id
         }
     )
     update_containers_service.upload_containers()
@@ -60,9 +58,7 @@ async def remove_container(id: str, force: bool = False) -> dict:
             "force": force
         },
         json_data={
-            "container": {
-                "id": id
-            }
+            "id": id
         }
     )
     update_containers_service.upload_containers()
@@ -75,9 +71,7 @@ async def start_container(id: str) -> dict:
         method="POST",
         endpoint="/api/v1/manage/container/start",
         json_data={
-            "container": {
-                "id": id
-            }
+            "id": id
         }
     )
     update_containers_service.upload_containers()
