@@ -36,7 +36,9 @@ class DockerManager:
             detach: bool = True,
             ports: Optional[Dict[str, int]] = None,
             volumes: Optional[Dict[str, Dict[str, str]]] = None,
-            environment: Optional[Dict[str, str]] = None
+            environment: Optional[Dict[str, str]] = None,
+            network: Optional[str] = None,
+            network_mode: Optional[str] = None
     ) -> dict:
         """
         Пуллит образ и запускает контейнер
@@ -73,6 +75,10 @@ class DockerManager:
                 run_kwargs["volumes"] = volumes
             if environment is not None:
                 run_kwargs["environment"] = environment
+            if network_mode is not None:
+                run_kwargs["network_mode"] = network_mode
+            if network is not None and network_mode is None:
+                run_kwargs["network"] = network
 
             container = self.client.containers.run(**run_kwargs)
 

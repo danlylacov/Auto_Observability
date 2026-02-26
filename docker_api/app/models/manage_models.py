@@ -18,3 +18,4 @@ class FullContainer(BaseModel):
     ports: Optional[Dict[str, int]] = Field(None)
     volumes: Optional[Dict[str, Dict[str, str]]] = Field(None)
     environment: Optional[Dict[str, str]] = Field(None)
+    network: Optional[str] = Field(None, max_length=500)

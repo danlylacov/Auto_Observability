@@ -1,6 +1,7 @@
 import yaml
 import os
 from typing import Dict, Any, Optional
+from app.services.exporter_env_generator import ExporterEnvGenerator
 
 
 class PrometheusConfigGenerator:
@@ -15,6 +16,7 @@ class PrometheusConfigGenerator:
 
         self.signatures_path = signatures_path
         self.exporter_configs = self._load_signatures()
+        self.env_generator = ExporterEnvGenerator(signatures_path)
 
     def _load_signatures(self) -> Dict[str, Any]:
         """
@@ -177,6 +179,23 @@ class PrometheusConfigGenerator:
         }
 
         return prometheus_config
+    
+    def get_exporter_env_vars(
+        self,
+        container_info: Dict[str, Any],
+        stack_key: str,
+        network_name: Optional[str] = None
+    ) -> Dict[str, str]:
+        """
+        Генерирует переменные окружения для экспортера
+        """
+        return self.env_generator.generate_env_vars(container_info, stack_key, network_name)
+    
+    def get_container_network(self, container_info: Dict[str, Any]) -> Optional[str]:
+        """
+        Извлекает имя сети контейнера
+        """
+        return self.env_generator.get_container_network(container_info)
 
     def generate_config(self, container_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -210,14 +229,27 @@ class PrometheusConfigGenerator:
             print(f"Не удалось определить целевой адрес для контейнера {container_name}")
             return None
 
+        # Получаем сеть контейнера
+        network_name = self.get_container_network(container_info)
+        
+        # Генерируем переменные окружения для экспортера
+        exporter_env_vars = self.get_exporter_env_vars(container_info, stack_key, network_name)
+
         # Строим конфигурацию
-        return self._build_prometheus_config(
+        config = self._build_prometheus_config(
             container_name=container_name,
             container_info=container_info,
             stack_key=stack_key,
             exporter_config=exporter_config,
             target_address=target_address
         )
+        
+        # Добавляем информацию о сети и env переменных в exporter_info
+        if config and 'exporter_info' in config:
+            config['exporter_info']['network'] = network_name
+            config['exporter_info']['exporter_env_vars'] = exporter_env_vars
+        
+        return config
 
     def save_config(self, config: Dict[str, Any], filename: str = 'prometheus.yml') -> None:
         """
