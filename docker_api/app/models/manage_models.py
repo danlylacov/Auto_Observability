@@ -3,7 +3,7 @@ from typing import Optional, Dict
 
 
 class Container(BaseModel):
-    id: str = Field(None, max_length=500)
+    id: str = Field(..., max_length=500)
 
 
 class Volume(BaseModel):
