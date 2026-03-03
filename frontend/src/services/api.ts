@@ -36,6 +36,84 @@ export interface ContainersResponse {
   [containerId: string]: ContainerData
 }
 
+export interface HostInfo {
+  id: string
+  name: string
+  host: string
+  port: number
+  status?: number | string
+}
+
+export const hostsApi = {
+  async getHosts(): Promise<HostInfo[]> {
+    const response = await api.get<{ hosts: Record<string, any> | HostInfo[] }>('/api/v1/hosts/get')
+    const raw = response.data.hosts
+
+    if (Array.isArray(raw)) {
+      // Если backend вернул список объектов HostDTO
+      return raw as HostInfo[]
+    }
+
+    // Если backend вернул словарь id -> данные из Redis
+    return Object.entries(raw || {}).map(([id, data]: [string, any]) => ({
+      id,
+      name: data.name,
+      host: data.host,
+      port: data.port,
+      status: data.status
+    }))
+  },
+
+  async addHost(payload: { name: string; host: string; port: number }): Promise<any> {
+    const params = new URLSearchParams()
+    params.append('name', payload.name)
+    params.append('host', payload.host)
+    params.append('port', String(payload.port))
+    const response = await api.post('/api/v1/hosts/add', null, { params })
+    return response.data
+  },
+
+  async updateHost(payload: { id: string; name?: string; host?: string; port?: number | null }): Promise<any> {
+    const params: Record<string, any> = { id: payload.id }
+    if (payload.name !== undefined) params.name = payload.name
+    if (payload.host !== undefined) params.host = payload.host
+    if (payload.port !== undefined && payload.port !== null) params.port = payload.port
+    const response = await api.put('/api/v1/hosts/update', null, { params })
+    return response.data
+  },
+
+  async deleteHost(id: string): Promise<any> {
+    const response = await api.delete('/api/v1/hosts/delete', { params: { id } })
+    return response.data
+  },
+
+  async refreshHosts(): Promise<any> {
+    const response = await api.get('/api/v1/hosts/update_hosts')
+    return response.data
+  }
+}
+
+export const configApi = {
+  async getSignature(): Promise<string> {
+    const response = await api.get<{ signature: string } | any>('/api/v1/prometheus/get_signature')
+    // backend может вернуть просто строку или объект; обрабатываем оба варианта
+    if (typeof response.data === 'string') {
+      return response.data
+    }
+    if (typeof response.data?.signature === 'string') {
+      return response.data.signature
+    }
+    return JSON.stringify(response.data, null, 2)
+  },
+
+  async updateSignature(newSignature: string): Promise<any> {
+    const response = await api.patch('/api/v1/prometheus/update_signature', null, {
+      params: { new_signature: newSignature }
+    })
+    return response.data
+  }
+}
+
 export const containerApi = {
   async getContainers(hostId?: string): Promise<ContainersResponse> {
     const params = hostId ? { host_id: hostId } : undefined

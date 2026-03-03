@@ -39,90 +39,93 @@
       <p>Loading containers...</p>
     </div>
 
-    <div v-else-if="filteredContainers.length === 0" class="empty-state">
+    <div v-else-if="groupedContainers.length === 0" class="empty-state">
       <p>No containers found</p>
     </div>
 
     <div v-else class="table-container">
-      <table class="containers-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Image</th>
-            <th>Stack</th>
-            <th>Host</th>
-            <th class="id-column">ID</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="[id, data] in filteredContainers" :key="id">
-            <td>
-              <a @click="viewDetails(id)" class="container-name-link">
-                {{ data.info.Name?.replace(/^\//, '') || 'Unknown' }}
-              </a>
-            </td>
-            <td>
-              <span :class="['badge', getStatusBadgeClass(data.info.State?.Status)]">
-                {{ data.info.State?.Status || 'unknown' }}
-              </span>
-            </td>
-            <td class="text-gray">{{ data.info.Config?.Image || 'Unknown' }}</td>
-            <td>
-              <span v-if="getStack(data.classification)" class="badge badge-info">
-                {{ getStack(data.classification) }}
-              </span>
-              <span v-else class="text-gray">-</span>
-            </td>
-            <td>
-              <span class="text-gray">
-                {{ data.host_name || 'Unknown host' }}
-              </span>
-            </td>
-            <td class="text-xs text-gray id-column-cell">{{ id.substring(0, 12) }}</td>
-            <td>
-              <div class="action-buttons">
-                <button 
-                  v-if="data.info.State?.Status === 'running'"
-                  @click="handleStop(id)" 
-                  class="btn btn-sm btn-danger"
-                  :disabled="actionLoading === id"
-                  title="Stop"
-                >
-                  <span v-if="actionLoading === id" class="loading"></span>
-                  <span v-else>Stop</span>
-                </button>
-                <button 
-                  v-else
-                  @click="handleStart(id)" 
-                  class="btn btn-sm btn-success"
-                  :disabled="actionLoading === id"
-                  title="Start"
-                >
-                  <span v-if="actionLoading === id" class="loading"></span>
-                  <span v-else>Start</span>
-                </button>
-                <button 
-                  @click="handleRemove(id)" 
-                  class="btn btn-sm btn-danger"
-                  :disabled="actionLoading === id"
-                  title="Remove"
-                >
-                  Remove
-                </button>
-                <button 
-                  @click="viewDetails(id)" 
-                  class="btn btn-sm btn-primary"
-                  title="Details"
-                >
-                  Details
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div
+        v-for="group in groupedContainers"
+        :key="group.hostKey"
+        class="host-group"
+      >
+        <div class="host-header">
+          <h3 class="host-title">{{ group.hostName }}</h3>
+        </div>
+        <table class="containers-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Image</th>
+              <th>Stack</th>
+              <th class="id-column">ID</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="[id, data] in group.items" :key="id">
+              <td>
+                <a @click="viewDetails(id)" class="container-name-link">
+                  {{ data.info.Name?.replace(/^\//, '') || 'Unknown' }}
+                </a>
+              </td>
+              <td>
+                <span :class="['badge', getStatusBadgeClass(data.info.State?.Status)]">
+                  {{ data.info.State?.Status || 'unknown' }}
+                </span>
+              </td>
+              <td class="text-gray">{{ data.info.Config?.Image || 'Unknown' }}</td>
+              <td>
+                <span v-if="getStack(data.classification)" class="badge badge-info">
+                  {{ getStack(data.classification) }}
+                </span>
+                <span v-else class="text-gray">-</span>
+              </td>
+              <td class="text-xs text-gray id-column-cell">{{ id.substring(0, 12) }}</td>
+              <td>
+                <div class="action-buttons">
+                  <button 
+                    v-if="data.info.State?.Status === 'running'"
+                    @click="handleStop(id)" 
+                    class="btn btn-sm btn-danger"
+                    :disabled="actionLoading === id"
+                    title="Stop"
+                  >
+                    <span v-if="actionLoading === id" class="loading"></span>
+                    <span v-else>Stop</span>
+                  </button>
+                  <button 
+                    v-else
+                    @click="handleStart(id)" 
+                    class="btn btn-sm btn-success"
+                    :disabled="actionLoading === id"
+                    title="Start"
+                  >
+                    <span v-if="actionLoading === id" class="loading"></span>
+                    <span v-else>Start</span>
+                  </button>
+                  <button 
+                    @click="handleRemove(id)" 
+                    class="btn btn-sm btn-danger"
+                    :disabled="actionLoading === id"
+                    title="Remove"
+                  >
+                    Remove
+                  </button>
+                  <button 
+                    @click="viewDetails(id)" 
+                    class="btn btn-sm btn-primary"
+                    title="Details"
+                  >
+                    Details
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
@@ -135,12 +138,10 @@ import { containerApi, type ContainersResponse } from '../services/api'
 const router = useRouter()
 
 const containers = ref<ContainersResponse>({})
-const hosts = ref<{ id: string; name: string }[]>([])
 const loading = ref(false)
 const actionLoading = ref<string | null>(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
-const selectedHostId = ref<string | null>(null)
 
 const filteredContainers = computed(() => {
   let filtered = Object.entries(containers.value)
@@ -167,6 +168,28 @@ const filteredContainers = computed(() => {
   return filtered
 })
 
+const groupedContainers = computed(() => {
+  const groups: Record<string, { hostName: string; items: [string, any][] }> = {}
+
+  filteredContainers.value.forEach(([id, data]) => {
+    const hostName = data.host_name || 'Unknown host'
+    const hostKey = data.host_id || hostName
+    if (!groups[hostKey]) {
+      groups[hostKey] = {
+        hostName,
+        items: []
+      }
+    }
+    groups[hostKey].items.push([id, data])
+  })
+
+  return Object.entries(groups).map(([hostKey, value]) => ({
+    hostKey,
+    hostName: value.hostName,
+    items: value.items
+  }))
+})
+
 const getStack = (classification: any): string | undefined => {
   if (classification?.result && classification.result.length > 0) {
     return classification.result[0][0]
@@ -182,7 +205,7 @@ const getStatusBadgeClass = (status: string | undefined): string => {
 const loadContainers = async () => {
   loading.value = true
   try {
-    containers.value = await containerApi.getContainers(selectedHostId.value || undefined)
+    containers.value = await containerApi.getContainers()
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'

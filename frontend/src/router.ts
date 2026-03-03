@@ -1,12 +1,23 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ContainersView from './views/ContainersView.vue'
 import ContainerDetailView from './views/ContainerDetailView.vue'
+import HostsView from './views/HostsView.vue'
+import ConfigView from './views/ConfigView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
       path: '/',
+      redirect: '/containers'
+    },
+    {
+      path: '/hosts',
+      name: 'hosts',
+      component: HostsView
+    },
+    {
+      path: '/containers',
       name: 'containers',
       component: ContainersView
     },
@@ -14,6 +25,11 @@ const router = createRouter({
       path: '/container/:id',
       name: 'container-detail',
       component: ContainerDetailView
+    },
+    {
+      path: '/config',
+      name: 'config',
+      component: ConfigView
     }
   ]
 })

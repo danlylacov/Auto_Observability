@@ -129,13 +129,6 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2 class="section-title">Prometheus</h2>
-        <PrometheusConfig 
-          :container-id="containerId"
-          :stack="stack"
-        />
-      </div>
     </div>
   </div>
 </template>
@@ -143,7 +136,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { containerApi, type ContainerData } from '../services/api'
-import PrometheusConfig from './PrometheusConfig.vue'
 
 const props = defineProps<{
   containerId: string
@@ -155,6 +147,7 @@ const emit = defineEmits<{
 
 const containerData = ref<ContainerData | null>(null)
 const loading = ref(false)
+const hostId = ref<string | null>(null)
 
 const containerName = computed(() => {
   return containerData.value?.info.Name?.replace(/^\//, '') || 'Unknown'
@@ -257,6 +250,7 @@ const loadContainer = async () => {
   try {
     const containers = await containerApi.getContainers()
     containerData.value = containers[props.containerId] || null
+    hostId.value = containerData.value?.host_id || null
   } catch (error: any) {
     console.error('Failed to load container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load container details'
@@ -269,7 +263,10 @@ const loadContainer = async () => {
 const handleStart = async () => {
   loading.value = true
   try {
-    const result = await containerApi.startContainer(props.containerId)
+    if (!hostId.value) {
+      throw new Error('Host ID is not available for this container')
+    }
+    const result = await containerApi.startContainer(props.containerId, hostId.value)
     console.log('Start result:', result)
     await loadContainer()
   } catch (error: any) {
@@ -284,7 +281,10 @@ const handleStart = async () => {
 const handleStop = async () => {
   loading.value = true
   try {
-    const result = await containerApi.stopContainer(props.containerId)
+    if (!hostId.value) {
+      throw new Error('Host ID is not available for this container')
+    }
+    const result = await containerApi.stopContainer(props.containerId, hostId.value)
     console.log('Stop result:', result)
     await loadContainer()
   } catch (error: any) {
@@ -302,7 +302,10 @@ const handleRemove = async () => {
   }
   loading.value = true
   try {
-    const result = await containerApi.removeContainer(props.containerId)
+    if (!hostId.value) {
+      throw new Error('Host ID is not available for this container')
+    }
+    const result = await containerApi.removeContainer(props.containerId, hostId.value)
     console.log('Remove result:', result)
     emit('back')
   } catch (error: any) {

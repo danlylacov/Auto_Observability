@@ -4,8 +4,10 @@
       <div class="container">
         <div class="header-content">
           <h1 class="logo">Auto Observability</h1>
-          <nav>
-            <router-link to="/" class="nav-link">Containers</router-link>
+          <nav class="nav-tabs">
+            <router-link to="/hosts" class="nav-link">Hosts</router-link>
+            <router-link to="/containers" class="nav-link">Containers</router-link>
+            <router-link to="/config" class="nav-link">Configuration</router-link>
           </nav>
         </div>
       </div>
@@ -35,6 +37,11 @@
   align-items: center;
 }
 
+.nav-tabs {
+  display: flex;
+  gap: 8px;
+}
+
 .logo {
   font-size: 18px;
   font-weight: 600;
@@ -56,6 +63,7 @@
 
 .nav-link.router-link-active {
   color: var(--accent);
+  background-color: var(--bg-primary);
 }
 
 .main {
