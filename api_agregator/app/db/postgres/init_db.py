@@ -1,5 +1,6 @@
 from app.db.postgres.database import Base, engine
-from app.models.postgres import Container, PrometheusConfig
+from app.models.postgres import Container, PrometheusConfig  # noqa: F401
+from app.models.postgres.host import Host  # noqa: F401
 
 
 def init_db() -> None:
