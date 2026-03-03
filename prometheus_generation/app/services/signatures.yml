@@ -9,7 +9,6 @@ postgresql:
   exporter_image: "prometheuscommunity/postgres-exporter:latest"
   env_vars:
     DATA_SOURCE_NAME: "postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
-  # Опционально: можно указать шаблон для DATA_SOURCE_NAME
   env_template: "postgresql://{user}:{password}@{host}:{port}/{database}?sslmode=disable"
 
 mysql:

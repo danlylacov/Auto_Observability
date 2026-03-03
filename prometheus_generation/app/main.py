@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import generate
+from app.routers import generate, signature
 
 app = FastAPI(
     title="Prometheus Generation API",
@@ -8,6 +8,7 @@ app = FastAPI(
 )
 
 
+app.include_router(signature.router, prefix="/api/v1/signature", tags=["signature"])
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
 
 
