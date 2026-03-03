@@ -16,6 +16,18 @@
           <option value="exited">Stopped</option>
         </select>
       </div>
+      <div class="filters">
+        <select v-model="selectedHostId" class="input" style="width: auto;">
+          <option :value="null">All hosts</option>
+          <option 
+            v-for="host in hosts" 
+            :key="host.id" 
+            :value="host.id"
+          >
+            {{ host.name || host.id }}
+          </option>
+        </select>
+      </div>
       <button @click="handleRefresh" class="btn btn-primary" :disabled="loading">
         <span v-if="loading" class="loading"></span>
         <span v-else>Refresh</span>
@@ -39,6 +51,7 @@
             <th>Status</th>
             <th>Image</th>
             <th>Stack</th>
+            <th>Host</th>
             <th class="id-column">ID</th>
             <th>Actions</th>
           </tr>
@@ -61,6 +74,11 @@
                 {{ getStack(data.classification) }}
               </span>
               <span v-else class="text-gray">-</span>
+            </td>
+            <td>
+              <span class="text-gray">
+                {{ data.host_name || 'Unknown host' }}
+              </span>
             </td>
             <td class="text-xs text-gray id-column-cell">{{ id.substring(0, 12) }}</td>
             <td>
@@ -117,10 +135,12 @@ import { containerApi, type ContainersResponse } from '../services/api'
 const router = useRouter()
 
 const containers = ref<ContainersResponse>({})
+const hosts = ref<{ id: string; name: string }[]>([])
 const loading = ref(false)
 const actionLoading = ref<string | null>(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
+const selectedHostId = ref<string | null>(null)
 
 const filteredContainers = computed(() => {
   let filtered = Object.entries(containers.value)
@@ -162,7 +182,7 @@ const getStatusBadgeClass = (status: string | undefined): string => {
 const loadContainers = async () => {
   loading.value = true
   try {
-    containers.value = await containerApi.getContainers()
+    containers.value = await containerApi.getContainers(selectedHostId.value || undefined)
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'
@@ -189,7 +209,12 @@ const handleRefresh = async () => {
 const handleStart = async (id: string) => {
   actionLoading.value = id
   try {
-    const result = await containerApi.startContainer(id)
+    const container = containers.value[id]
+    const hostId = container?.host_id
+    if (!hostId) {
+      throw new Error('Host ID is not available for this container')
+    }
+    const result = await containerApi.startContainer(id, hostId)
     console.log('Start result:', result)
     await loadContainers()
   } catch (error: any) {
@@ -204,7 +229,12 @@ const handleStart = async (id: string) => {
 const handleStop = async (id: string) => {
   actionLoading.value = id
   try {
-    const result = await containerApi.stopContainer(id)
+    const container = containers.value[id]
+    const hostId = container?.host_id
+    if (!hostId) {
+      throw new Error('Host ID is not available for this container')
+    }
+    const result = await containerApi.stopContainer(id, hostId)
     console.log('Stop result:', result)
     await loadContainers()
   } catch (error: any) {
@@ -222,7 +252,12 @@ const handleRemove = async (id: string) => {
   }
   actionLoading.value = id
   try {
-    const result = await containerApi.removeContainer(id)
+    const container = containers.value[id]
+    const hostId = container?.host_id
+    if (!hostId) {
+      throw new Error('Host ID is not available for this container')
+    }
+    const result = await containerApi.removeContainer(id, hostId)
     console.log('Remove result:', result)
     await loadContainers()
   } catch (error: any) {

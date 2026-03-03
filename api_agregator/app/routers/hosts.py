@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.db.postgres.database import get_db
 
+from app.services.hosts_service import HostsService
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -27,10 +29,11 @@ async def add_host(name: str, host: str, port: int, db: Session = Depends(get_db
 @router.get("/get", status_code=status.HTTP_200_OK)
 async def get_hosts(db: Session = Depends(get_db)):
     """
-    Получение всех хостов
+    Получение всех хостов из Redis
     """
     try:
-        hosts = db.query(Host).all()
+        hosts_service = HostsService(db)
+        hosts = hosts_service.get_all_hosts()
         return {"hosts": hosts}
     except Exception as e:
         return {"message": str(e)}
@@ -81,3 +84,12 @@ async def delete_host(id: str, db: Session = Depends(get_db)):
         return {"message": "Host deleted successfully"}
     except Exception as e:
         return {"message": str(e)}
+
+@router.get("/update_hosts", status_code=status.HTTP_200_OK)
+async def update_hosts_info(db: Session = Depends(get_db)) -> dict[str, dict]:
+    """
+    Обновление информации о хостах в редис
+    """
+    hosts_service = HostsService(db)
+    hosts = hosts_service.upload_hosts()
+    return hosts

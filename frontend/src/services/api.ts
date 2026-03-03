@@ -28,6 +28,8 @@ export interface ContainerData {
   classification: {
     result: [string, number][]
   }
+  host_id?: string
+  host_name?: string
 }
 
 export interface ContainersResponse {
@@ -35,8 +37,9 @@ export interface ContainersResponse {
 }
 
 export const containerApi = {
-  async getContainers(): Promise<ContainersResponse> {
-    const response = await api.get<ContainersResponse>('/api/v1/containers/containers')
+  async getContainers(hostId?: string): Promise<ContainersResponse> {
+    const params = hostId ? { host_id: hostId } : undefined
+    const response = await api.get<ContainersResponse>('/api/v1/containers/containers', { params })
     return response.data
   },
 
@@ -45,18 +48,29 @@ export const containerApi = {
     return response.data
   },
 
-  async startContainer(id: string): Promise<any> {
-    const response = await api.post(`/api/v1/containers/container/start?id=${id}`)
+  async startContainer(id: string, hostId: string): Promise<any> {
+    const response = await api.post(
+      `/api/v1/containers/container/start`,
+      null,
+      { params: { id, host_id: hostId } }
+    )
     return response.data
   },
 
-  async stopContainer(id: string): Promise<any> {
-    const response = await api.post(`/api/v1/containers/container/stop?id=${id}`)
+  async stopContainer(id: string, hostId: string): Promise<any> {
+    const response = await api.post(
+      `/api/v1/containers/container/stop`,
+      null,
+      { params: { id, host_id: hostId } }
+    )
     return response.data
   },
 
-  async removeContainer(id: string, force: boolean = false): Promise<any> {
-    const response = await api.delete(`/api/v1/containers/container/remove?id=${id}&force=${force}`)
+  async removeContainer(id: string, hostId: string, force: boolean = false): Promise<any> {
+    const response = await api.delete(
+      `/api/v1/containers/container/remove`,
+      { params: { id, host_id: hostId, force } }
+    )
     return response.data
   },
 
