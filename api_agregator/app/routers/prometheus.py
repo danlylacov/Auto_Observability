@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, status
@@ -223,3 +223,28 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             "network": network_name,
             "stack": config.stack
         }
+
+
+@router.get("/get_signature", status_code=200)
+async def get_signature() -> Dict[str, str]:
+    """
+    Получение файла с настройками генерации Prometheus Config
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='GET',
+        endpoint='/api/v1/signature/get'
+    )
+    return result
+
+@router.patch("/update_signature", status_code=200)
+async def update_signature(new_signature: str) -> Dict[str, str]:
+    """
+    Обновление файла с настройками генерации Prometheus Config
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='PATCH',
+        endpoint=f'/api/v1/signature/update?new_signature={new_signature}',
+    )
+    return result
