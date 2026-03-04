@@ -17,10 +17,13 @@ async def add_host(name: str, host: str, port: int, db: Session = Depends(get_db
     Добавление нового целевого хоста
     """
     try:
-        prometheus_config = Host(name=name, host=host, port=port)
-        db.add(prometheus_config)
+        host_config = Host(name=name, host=host, port=port)
+        db.add(host_config)
         db.commit()
-        db.refresh(prometheus_config)
+        db.refresh(host_config)
+
+        hosts_service = HostsService(db)
+        hosts_service.upload_hosts()
         return {"message": "Host added successfully"}
     except Exception as e:
         return {"message": str(e)}
@@ -64,6 +67,9 @@ async def update_host(
 
         db.commit()
         db.refresh(db_host)
+
+        hosts_service = HostsService(db)
+        hosts_service.upload_hosts()
         return {"message": "Host updated successfully"}
     except Exception as e:
         return {"message": str(e)}
@@ -81,6 +87,9 @@ async def delete_host(id: str, db: Session = Depends(get_db)):
 
         db.delete(db_host)
         db.commit()
+
+        hosts_service = HostsService(db)
+        hosts_service.upload_hosts()
         return {"message": "Host deleted successfully"}
     except Exception as e:
         return {"message": str(e)}

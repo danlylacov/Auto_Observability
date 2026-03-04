@@ -44,3 +44,16 @@ class Hosts(RedisConnection):
         return hosts
 
 
+    def delete_hosts(self, host_id: str = None) -> int:
+        """
+        Удаляет хост или все хосты
+        """
+        pattern = f"host:{host_id}:*" if host_id else "host:*"
+        container_keys = self.client.keys(pattern)
+        if not container_keys:
+            print("Хосты не найдены")
+            return 0
+        deleted_count = self.client.delete(*container_keys)
+        return deleted_count
+
+

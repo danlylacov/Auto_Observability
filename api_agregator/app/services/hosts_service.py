@@ -62,11 +62,14 @@ class HostsService:
                 result[host.id]['status'] = requests.get(f'{host.base_url}/health').status_code
             except (Exception,):
                 result[host.id]['status'] = 'down'
+        self.redis_hosts.delete_hosts()
         self.redis_hosts.upload_hosts(result)
         return result
 
     def get_all_hosts(self) -> list:
-        self.redis_hosts.get_hosts()
+        """
+        Возвращает все хосты
+        """
         return self.redis_hosts.get_hosts()
 
 
