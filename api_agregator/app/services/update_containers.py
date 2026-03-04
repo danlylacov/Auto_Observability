@@ -78,12 +78,14 @@ class UpdateContainers:
         """
         db = self._get_db()
         hosts_service = HostsService(db)
-        hosts: list[HostDTO] = hosts_service.get_all_hosts()
+        hosts = hosts_service.get_all_hosts()
+
+        print(hosts)
 
         result: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-        for host in hosts:
-            docker_api = APIGateway(host.base_url)
+        for id, host_data in hosts.items():
+            docker_api = APIGateway(f'http://{host_data["host"]}:{host_data["port"]}')
 
             try:
                 response = docker_api.make_request(
@@ -111,11 +113,11 @@ class UpdateContainers:
                 host_containers[container_id] = {
                     "info": container,
                     "classification": classification,
-                    "host_id": host.id,
-                    "host_name": host.name,
+                    "host_id": id,
+                    "host_name": host_data['name'],
                 }
 
-            result[host.id] = host_containers
+            result[id] = host_containers
 
         return result
 
