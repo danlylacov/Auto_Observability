@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/", status_code=status.HTTP_200_OK)
-async def generate(container_data: ContainerData) -> Dict[str, Dict]:
+async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
     """
     Генерирует конфигурацию Prometheus для контейнера
     """
@@ -19,7 +19,7 @@ async def generate(container_data: ContainerData) -> Dict[str, Dict]:
         generator = PrometheusConfigGenerator()
         container_dict = container_data.model_dump()
 
-        config = generator.generate_config(container_dict)
+        config = generator.generate_config(container_dict, host)
 
         if config is None:
             raise HTTPException(
@@ -27,17 +27,16 @@ async def generate(container_data: ContainerData) -> Dict[str, Dict]:
                 detail="Не удалось сгенерировать конфигурацию. Проверьте данные контейнера и классификацию."
             )
 
-        info = generator.get_exporter_info(config)
+        #info = generator.get_exporter_info(config)
 
-        minio_service = MinioService()
-        upload_data = minio_service.upload_yml(
-            config,
-            f'{container_data.info["Id"]}-{datetime.now().strftime("%Y%m%d-%H%M%S")}.yml',
-        )
+        # minio_service = MinioService()
+        # upload_data = minio_service.upload_yml(
+        #     config,
+        #     f'{container_data.info["Id"]}-{datetime.now().strftime("%Y%m%d-%H%M%S")}.yml',
+        # )
 
         return {
-            'config': upload_data,
-            'info': info
+            'config': config,
         }
     except HTTPException:
         raise
