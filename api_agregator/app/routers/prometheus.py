@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, status
@@ -145,15 +145,13 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             "error": "Failed to parse container data from Redis",
             "container_id": container_id
         }
-    
-    # Извлекаем network и exporter_env_vars из config_metadata
+
     config_metadata = config.config_metadata or {}
     exporter_info = config_metadata.get('info', {})
     
     network_name = exporter_info.get("network")
     exporter_env_vars = exporter_info.get("exporter_env_vars", {})
-    
-    # Если network или env_vars отсутствуют в конфигурации, пытаемся получить из Redis
+
     if not network_name or not exporter_env_vars:
         logger.warning(f"Network or env_vars not found in config_metadata for {container_id}, trying to get from Redis")
         
@@ -165,16 +163,14 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
                 "error": "Container info is empty",
                 "container_id": container_id
             }
-        
-        # Получаем network из Redis если его нет в конфигурации
+
         if not network_name:
             network_settings = container_info.get('NetworkSettings', {})
             networks = network_settings.get('Networks', {})
             if networks:
                 network_names = list(networks.keys())
                 network_name = 'bridge' if 'bridge' in network_names else network_names[0] if network_names else None
-        
-        # Если нет env_vars, нужно перегенерировать конфигурацию
+
         if not exporter_env_vars:
             logger.warning(f"Env vars not found in config, need to regenerate config for {container_id}")
             return {
@@ -194,10 +190,9 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
         "name": f"{config.container_name}-exporter",
         "ports": {f"{config.exporter_port}/tcp": port},
         "detach": True,
-        "network": network_name  # КРИТИЧНО: Подключаем к той же сети!
+        "network": network_name
     }
 
-    # Добавляем переменные окружения, если они есть
     if exporter_env_vars:
         json_data["environment"] = exporter_env_vars
         logger.info(f"Using env vars from config: {exporter_env_vars}")
@@ -228,3 +223,28 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             "network": network_name,
             "stack": config.stack
         }
+
+
+@router.get("/get_signature", status_code=200)
+async def get_signature() -> Dict[str, str]:
+    """
+    Получение файла с настройками генерации Prometheus Config
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='GET',
+        endpoint='/api/v1/signature/get'
+    )
+    return result
+
+@router.patch("/update_signature", status_code=200)
+async def update_signature(new_signature: str) -> Dict[str, str]:
+    """
+    Обновление файла с настройками генерации Prometheus Config
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='PATCH',
+        endpoint=f'/api/v1/signature/update?new_signature={new_signature}',
+    )
+    return result

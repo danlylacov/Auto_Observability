@@ -26,8 +26,6 @@ class DockerManager:
         except docker.errors.NotFound:
             return "Ошибка: Контейнер не найден."
 
-    from typing import Optional, Dict, Any, Literal
-
     def pull_and_run_container(
             self,
             image_name: str,
@@ -88,7 +86,7 @@ class DockerManager:
         except Exception as e:
             return {'error': f"Неожиданная ошибка при запуске контейнера: {e}"}
 
-    def stop_container(self, container_id_or_name: str) -> None:
+    def stop_container(self, container_id_or_name: str) -> str:
         """Остановить контейнер"""
         try:
             container = self.client.containers.get(container_id_or_name)

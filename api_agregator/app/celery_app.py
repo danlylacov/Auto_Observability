@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import timedelta
 
 from celery import Celery
 from celery.schedules import crontab
@@ -31,7 +32,11 @@ celery_app.conf.beat_schedule = {
     'run-every-minute': {
         'task': 'app.tasks.update_containers',
         'schedule': crontab(minute='*'),
-    }
+    },
+    'run-hosts-every-15-seconds': {
+        'task': 'app.tasks.update_hosts',
+        'schedule': timedelta(seconds=15),
+    },
 }
 
 # Для отладки

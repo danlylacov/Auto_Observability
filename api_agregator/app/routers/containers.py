@@ -1,90 +1,124 @@
 import logging
-import os
 
-from dotenv import load_dotenv
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from app.services.update_containers import UpdateContainers
 from app.db.redis.docker_containers import DockerContainers
 from app.services.api_getaway import APIGateway
+from app.services.hosts_service import HostsService
+from app.db.postgres.database import get_db
 
-
-load_dotenv()
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-DOCKER_SERVICE_URL = os.getenv('DOCKER_API_URL')
-docker_gateway = APIGateway(DOCKER_SERVICE_URL)
-
-update_containers_service = UpdateContainers()
-
 
 @router.patch("/update_containers", status_code=status.HTTP_200_OK)
-async def update_containers():
+async def update_containers(db: Session = Depends(get_db)):
     """
-    Обновление информации о контейнерах
+    Обновление информации о контейнерах по всем хостам.
     """
+    update_containers_service = UpdateContainers(db=db)
     update_containers_service.upload_containers()
     return {"message": "Containers updated successfully"}
 
 
 @router.get("/containers", status_code=status.HTTP_200_OK)
-async def get_containers() -> dict:
+async def get_containers(
+    host_id: str | None = Query(default=None, description="Идентификатор целевого хоста"),
+) -> dict:
     docker_containers = DockerContainers()
-    data = docker_containers.get_containers(host)
+    data = docker_containers.get_containers(host_name=host_id)
     return data
 
 
 @router.post("/container/stop", status_code=status.HTTP_200_OK)
-async def stop_container(id: str) -> dict:
+async def stop_container(
+    id: str,
+    host_id: str = Query(..., description="Идентификатор хоста, на котором запущен контейнер"),
+    db: Session = Depends(get_db),
+) -> dict:
+    hosts_service = HostsService(db)
+    host_dto = hosts_service.get_host_by_id(host_id)
+    if not host_dto:
+        raise HTTPException(status_code=404, detail="Host not found")
+
+    docker_gateway = APIGateway(host_dto.base_url)
+
     result = docker_gateway.make_request(
         method="POST",
         endpoint="/api/v1/manage/container/stop",
-        json_data={
-            "container": {
-                "id": id
-            }
-        }
+        json_data={"id": id},
     )
+
+    update_containers_service = UpdateContainers(db=db)
     update_containers_service.upload_containers()
     return result
 
 
 @router.delete("/container/remove", status_code=status.HTTP_200_OK)
-async def remove_container(id: str, force: bool = False) -> dict:
+async def remove_container(
+    id: str,
+    host_id: str = Query(..., description="Идентификатор хоста, на котором запущен контейнер"),
+    force: bool = False,
+    db: Session = Depends(get_db),
+) -> dict:
+    hosts_service = HostsService(db)
+    host_dto = hosts_service.get_host_by_id(host_id)
+    if not host_dto:
+        raise HTTPException(status_code=404, detail="Host not found")
+
+    docker_gateway = APIGateway(host_dto.base_url)
+
     result = docker_gateway.make_request(
         method="DELETE",
         endpoint="/api/v1/manage/container/remove",
-        params={
-            "force": force
-        },
-        json_data={
-            "container": {
-                "id": id
-            }
-        }
+        params={"force": force},
+        json_data={"id": id},
     )
+
+    update_containers_service = UpdateContainers(db=db)
     update_containers_service.upload_containers()
     return result
 
 
 @router.post("/container/start", status_code=status.HTTP_200_OK)
-async def start_container(id: str) -> dict:
+async def start_container(
+    id: str,
+    host_id: str = Query(..., description="Идентификатор хоста, на котором должен быть запущен контейнер"),
+    db: Session = Depends(get_db),
+) -> dict:
+    hosts_service = HostsService(db)
+    host_dto = hosts_service.get_host_by_id(host_id)
+    if not host_dto:
+        raise HTTPException(status_code=404, detail="Host not found")
+
+    docker_gateway = APIGateway(host_dto.base_url)
+
     result = docker_gateway.make_request(
         method="POST",
         endpoint="/api/v1/manage/container/start",
-        json_data={
-            "container": {
-                "id": id
-            }
-        }
+        json_data={"id": id},
     )
+
+    update_containers_service = UpdateContainers(db=db)
     update_containers_service.upload_containers()
     return result
 
 
-@router.delete("/volume/remove", status_code=status.HTTP_200_OK)
+
+
+
+
+
+
+
+
+
+
+
+"""@router.delete("/volume/remove", status_code=status.HTTP_200_OK)
 async def remove_volume(volume_name: str, force: bool = False) -> dict:
     result = docker_gateway.make_request(
         method="DELETE",
@@ -134,3 +168,4 @@ async def cleanup_system() -> dict:
     )
     update_containers_service.upload_containers()
     return result
+"""

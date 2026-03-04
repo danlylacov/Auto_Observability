@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routers import containers
-from app.routers import prometheus
+from app.routers import prometheus, hosts
 
 app = FastAPI(
     title="Auto Observability API",
@@ -8,9 +9,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 app.include_router(containers.router, prefix="/api/v1/containers", tags=["containers"])
 app.include_router(prometheus.router, prefix="/api/v1/prometheus", tags=["prometheus"])
+app.include_router(hosts.router, prefix="/api/v1/hosts", tags=["hosts"])
 
 
 @app.get("/")
