@@ -120,6 +120,13 @@
                   >
                     Details
                   </button>
+                  <button 
+                    @click="viewGenerateExporter(id)" 
+                    class="btn btn-sm btn-success"
+                    title="Generate & Start Exporter"
+                  >
+                    Generate Exporter
+                  </button>
                 </div>
               </td>
             </tr>
@@ -296,6 +303,10 @@ const viewDetails = (id: string) => {
   router.push(`/container/${id}`)
 }
 
+const viewGenerateExporter = (id: string) => {
+  router.push(`/container/${id}/generate-exporter`)
+}
+
 onMounted(() => {
   loadContainers()
 })
@@ -419,5 +430,20 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: 'Courier New', monospace;
+}
+
+.host-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: var(--bg-secondary);
+  border-bottom: 2px solid var(--border);
+}
+
+.host-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 </style>

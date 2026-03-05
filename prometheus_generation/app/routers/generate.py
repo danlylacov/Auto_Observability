@@ -27,17 +27,20 @@ async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
                 detail="Не удалось сгенерировать конфигурацию. Проверьте данные контейнера и классификацию."
             )
 
-        #info = generator.get_exporter_info(config)
 
-        # minio_service = MinioService()
-        # upload_data = minio_service.upload_yml(
-        #     config,
-        #     f'{container_data.info["Id"]}-{datetime.now().strftime("%Y%m%d-%H%M%S")}.yml',
-        # )
+
+        minio_service = MinioService()
+        upload_data = minio_service.upload_config(
+            config['config']["scrape_config"],
+            config['config']["target"],
+            container_data.info['Id']
+        )
 
         return {
-            'config': config,
+            'config': upload_data,
+            'info': config['exporter_config']
         }
+
     except HTTPException:
         raise
     except Exception as e:

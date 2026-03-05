@@ -103,6 +103,18 @@ export const configApi = {
     if (typeof response.data?.signature === 'string') {
       return response.data.signature
     }
+    // Если это объект с ключом "signature.yml", извлекаем значение
+    if (response.data && typeof response.data === 'object' && 'signature.yml' in response.data) {
+      return response.data['signature.yml']
+    }
+    // Если это объект, пытаемся преобразовать в YAML
+    if (response.data && typeof response.data === 'object') {
+      // Если объект содержит только один ключ и значение - строка, возвращаем значение
+      const keys = Object.keys(response.data)
+      if (keys.length === 1 && typeof response.data[keys[0]] === 'string') {
+        return response.data[keys[0]]
+      }
+    }
     return JSON.stringify(response.data, null, 2)
   },
 
@@ -152,8 +164,8 @@ export const containerApi = {
     return response.data
   },
 
-  async generateConfig(containerId: string): Promise<any> {
-    const response = await api.post(`/api/v1/prometheus/generate_config?container_id=${containerId}`)
+  async generateConfig(containerId: string, hostId: string): Promise<any> {
+    const response = await api.post(`/api/v1/prometheus/generate_config?container_id=${containerId}&host_id=${hostId}`)
     return response.data
   },
 

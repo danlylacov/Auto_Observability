@@ -75,9 +75,11 @@ class PrometheusConfigGenerator:
             'job_name': job_name,
             'scrape_interval': '15s',
             'scrape_timeout': '10s',
-            'file_sd_configs': {
-                'files': [f'targets/{job_name}.yml']  # Должен быть список, а не словарь!
-            }
+            'file_sd_configs': [
+                {
+                    'files': [f'targets/{job_name}.yml']
+                }
+            ]
         }
 
         target_yml = {
@@ -87,7 +89,7 @@ class PrometheusConfigGenerator:
 
         prometheus_config = {
             'scrape_config': scrape_config,
-            f'targets/{job_name}.yml': target_yml
+            f'target': target_yml
         }
 
         return prometheus_config
@@ -139,7 +141,7 @@ class PrometheusConfigGenerator:
             'config': config,
             'exporter_config': exporter_config
         }
-        # Добавляем информацию о сети и env переменных в exporter_info
+
         result['exporter_config']['network'] = network_name
 
         return result

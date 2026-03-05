@@ -4,7 +4,7 @@ import os
 from typing import Any, Dict
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.postgres.database import get_db
@@ -12,6 +12,7 @@ from app.db.redis.docker_containers import DockerContainers
 from app.models.postgres.container import Container
 from app.models.postgres.prometheus_config import PrometheusConfig
 from app.services.api_getaway import APIGateway
+from app.services.hosts_service import HostsService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,43 +25,60 @@ docker_api_url = os.getenv("DOCKER_API_URL")
 @router.post("/generate_config", status_code=status.HTTP_200_OK)
 async def generate_config(
         container_id: str,
+        host_id: str,
         db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """
     Генерация конфига прометеус и сохранение в БД.
     """
+    # Получаем хост из БД по host_id
+    hosts_service = HostsService(db)
+    host_dto = hosts_service.get_host_by_id(host_id)
+    if not host_dto:
+        raise HTTPException(status_code=404, detail="Host not found")
+    
+    # Используем адрес хоста из БД
+    host = host_dto.host
+    
     docker_containers = DockerContainers()
-    container_data_str = docker_containers.get_container(container_id)
-
-    if not container_data_str:
+    container_data = docker_containers.get_container(container_id, host_id)
+    
+    if not container_data:
         return {"error": "Container not found"}
-
-    container_data = json.loads(container_data_str)
     info = container_data.get("info", {})
     classification = container_data.get("classification", {})
 
+    # Получаем имя контейнера
+    container_name = info.get("Name", "").lstrip("/") or info.get("Config", {}).get("Hostname", "unknown")
+
+    # Получаем stack из классификации
+    stack = None
+    if classification.get("result"):
+        stack = classification["result"][0][0] if classification["result"] else None
+
+    # Вызываем сервис генерации с параметром host
     api_gateway = APIGateway(prometheus_generation_url)
     config_data = api_gateway.make_request(
         method='POST',
         endpoint='/api/v1/generate/',
         json_data=container_data,
+        params={'host': host}
     )
 
-    config_info = config_data.get("info", {})
-    config_file = config_data.get("config", {})
+    # Извлекаем данные из ответа
+    exporter_config = config_data.get("info", {})  # это exporter_config из signatures.yml + network
+    config_file = config_data.get("config", {})  # это upload_data из minio
 
     container = db.query(Container).filter(Container.id == container_id).first()
 
     if not container:
-        stack = None
         classification_score = None
         if classification.get("result"):
-            stack = classification["result"][0][0] if classification["result"] else None
             classification_score = classification.get("result")
 
         container = Container(
             id=container_id,
-            name=info.get("Name", "").lstrip("/") or info.get("Config", {}).get("Hostname", "unknown"),
+            name=container_name,
             image=info.get("Config", {}).get("Image", ""),
             status=info.get("State", {}).get("Status", "unknown"),
             stack=stack,
@@ -71,27 +89,43 @@ async def generate_config(
     else:
         container.status = info.get("State", {}).get("Status", container.status)
         container.docker_info = info
-        if classification.get("result"):
-            container.stack = classification["result"][0][0] if classification["result"] else container.stack
+        if stack:
+            container.stack = stack
             container.classification_score = classification.get("result")
 
-    exporter_info = config_info
-    network_name = exporter_info.get("network")
-    exporter_env_vars = exporter_info.get("exporter_env_vars", {})
-
-    config_metadata = config_data.copy()
-    if 'info' in config_metadata:
-        config_metadata['info']['network'] = network_name
-        config_metadata['info']['exporter_env_vars'] = exporter_env_vars
+    # Извлекаем данные из exporter_config
+    network_name = exporter_config.get("network")
+    exporter_image = exporter_config.get("exporter_image")
+    exporter_port = exporter_config.get("exporter_port")
+    job_name_suffix = exporter_config.get("job_name_suffix", "")
+    
+    # Формируем job_name
+    job_name = f"{container_name}{job_name_suffix}"
+    
+    # Формируем config_metadata с полной информацией
+    config_metadata = {
+        'host_name': host_id,  # Сохраняем host_name для последующего использования
+        'config': config_file,
+        'info': {
+            'container_name': container_name,
+            'stack': stack,
+            'exporter_image': exporter_image,
+            'exporter_port': exporter_port,
+            'target_address': host,
+            'job_name': job_name,
+            'network': network_name,
+            'exporter_env_vars': exporter_config.get("env_vars", {}),  # Базовые env_vars из signatures.yml
+        }
+    }
     
     prometheus_config = PrometheusConfig(
         container_id=container_id,
-        container_name=config_info.get("container_name"),
-        stack=config_info.get("stack"),
-        exporter_image=config_info.get("exporter_image"),
-        exporter_port=config_info.get("exporter_port"),
-        target_address=config_info.get("target_address"),
-        job_name=config_info.get("job_name"),
+        container_name=container_name,
+        stack=stack,
+        exporter_image=exporter_image,
+        exporter_port=exporter_port,
+        target_address=host,
+        job_name=job_name,
         minio_bucket=config_file.get("bucket"),
         minio_file_path=config_file.get("file"),
         status="active",
@@ -127,26 +161,22 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             "container_id": container_id
         }
 
-    docker_containers = DockerContainers()
-    container_data_str = docker_containers.get_container(container_id)
+    # Получаем host_name из config_metadata или используем значение по умолчанию
+    # Получаем host_name из config_metadata или используем значение по умолчанию
+    config_metadata = config.config_metadata or {}
+    host_name = config_metadata.get('host_name', 'localhost')  # fallback на localhost
     
-    if not container_data_str:
+    docker_containers = DockerContainers()
+    container_data = docker_containers.get_container(container_id, host_name)
+    
+    if not container_data:
         logger.error(f"Target container {container_id} not found in Redis")
         return {
             "error": "Target container not found in Redis. Please update containers first.",
             "container_id": container_id
         }
     
-    try:
-        container_data = json.loads(container_data_str)
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse container data from Redis: {e}")
-        return {
-            "error": "Failed to parse container data from Redis",
-            "container_id": container_id
-        }
-
-    config_metadata = config.config_metadata or {}
+    # container_data уже словарь, возвращается из get_container
     exporter_info = config_metadata.get('info', {})
     
     network_name = exporter_info.get("network")
