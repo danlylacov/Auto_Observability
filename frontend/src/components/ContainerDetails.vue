@@ -53,6 +53,10 @@
               <span class="meta-label">Stack</span>
               <span class="meta-value badge badge-info">{{ stack }}</span>
             </div>
+            <div class="meta-item" v-if="hasPrometheusConfig">
+              <span class="meta-label">Prometheus</span>
+              <span class="meta-value badge badge-success">Config Generated</span>
+            </div>
             <div class="meta-item">
               <span class="meta-label">Container ID</span>
               <span class="meta-value text-xs">{{ containerId }}</span>
@@ -227,6 +231,10 @@ const stack = computed(() => {
     return containerData.value.classification.result[0][0]
   }
   return undefined
+})
+
+const hasPrometheusConfig = computed(() => {
+  return containerData.value?.has_prometheus_config === true
 })
 
 const created = computed(() => {

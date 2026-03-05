@@ -30,6 +30,7 @@ export interface ContainerData {
   }
   host_id?: string
   host_name?: string
+  has_prometheus_config?: boolean
 }
 
 export interface ContainersResponse {

@@ -50,13 +50,18 @@ class DockerManager:
                 self.client.images.pull(image_name)
                 pull_status = "образ успешно загружен"
 
-            try:
-                container = self.client.containers.get(name)
-
-                if container.status == "running":
-                    return {"status": "Контейнер уже запущен"}
-            except (Exception,):
-                pass
+            if name:
+                try:
+                    container = self.client.containers.get(name)
+                    if container.status == "running":
+                        return {"status": "Контейнер уже запущен", "container_id": container.short_id if hasattr(container, 'short_id') else str(container.id)[:12]}
+                    else:
+                        container.start()
+                        return {"status": "Контейнер перезапущен", "container_id": container.short_id if hasattr(container, 'short_id') else str(container.id)[:12], "pull_status": pull_status}
+                except docker.errors.NotFound:
+                    pass
+                except Exception as e:
+                    return {'error': f"Ошибка при проверке существующего контейнера: {e}"}
 
             run_kwargs = {
                 "image": image_name,
