@@ -34,6 +34,55 @@
       </button>
     </div>
 
+    <div v-if="selectedContainers.size > 0" class="bulk-actions-bar">
+      <div class="bulk-actions-info">
+        <span class="selected-count">{{ selectedContainers.size }} container(s) selected</span>
+        <button @click="clearSelection" class="btn-link">Clear</button>
+      </div>
+      <div class="bulk-actions-buttons">
+        <button 
+          @click="handleBulkStart" 
+          class="btn btn-sm btn-success"
+          :disabled="bulkActionLoading"
+        >
+          <span v-if="bulkActionLoading" class="loading"></span>
+          <span v-else>Start Selected</span>
+        </button>
+        <button 
+          @click="handleBulkStop" 
+          class="btn btn-sm btn-danger"
+          :disabled="bulkActionLoading"
+        >
+          <span v-if="bulkActionLoading" class="loading"></span>
+          <span v-else>Stop Selected</span>
+        </button>
+        <button 
+          @click="handleBulkRemove" 
+          class="btn btn-sm btn-danger"
+          :disabled="bulkActionLoading"
+        >
+          <span v-if="bulkActionLoading" class="loading"></span>
+          <span v-else>Remove Selected</span>
+        </button>
+        <button 
+          @click="handleBulkGenerateConfig" 
+          class="btn btn-sm btn-primary"
+          :disabled="bulkActionLoading"
+        >
+          <span v-if="bulkActionLoading" class="loading"></span>
+          <span v-else>Generate Config</span>
+        </button>
+        <button 
+          @click="handleBulkStartExporter" 
+          class="btn btn-sm btn-success"
+          :disabled="bulkActionLoading"
+        >
+          <span v-if="bulkActionLoading" class="loading"></span>
+          <span v-else>Start Exporter</span>
+        </button>
+      </div>
+    </div>
+
     <div v-if="loading && !containers.length" class="loading-state">
       <div class="loading"></div>
       <p>Loading containers...</p>
@@ -55,16 +104,33 @@
         <table class="containers-table">
           <thead>
             <tr>
+              <th class="checkbox-column">
+                <input 
+                  type="checkbox" 
+                  :checked="isAllSelectedInGroup(group.items)"
+                  @change="toggleSelectAllInGroup(group.items, $event)"
+                  class="checkbox"
+                />
+              </th>
               <th>Name</th>
               <th>Status</th>
               <th>Image</th>
               <th>Stack</th>
+              <th>Prometheus</th>
               <th class="id-column">ID</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="[id, data] in group.items" :key="id">
+              <td class="checkbox-column">
+                <input 
+                  type="checkbox" 
+                  :checked="selectedContainers.has(id)"
+                  @change="toggleSelection(id, $event)"
+                  class="checkbox"
+                />
+              </td>
               <td>
                 <a @click="viewDetails(id)" class="container-name-link">
                   {{ data.info.Name?.replace(/^\//, '') || 'Unknown' }}
@@ -79,6 +145,12 @@
               <td>
                 <span v-if="getStack(data.classification)" class="badge badge-info">
                   {{ getStack(data.classification) }}
+                </span>
+                <span v-else class="text-gray">-</span>
+              </td>
+              <td>
+                <span v-if="data.has_prometheus_config" class="badge badge-success" title="Prometheus config generated">
+                  ✓ Config
                 </span>
                 <span v-else class="text-gray">-</span>
               </td>
@@ -123,9 +195,9 @@
                   <button 
                     @click="viewGenerateExporter(id)" 
                     class="btn btn-sm btn-success"
-                    title="Generate & Start Exporter"
+                    title="Prometheus Config"
                   >
-                    Generate Exporter
+                    Prometheus Config
                   </button>
                 </div>
               </td>
@@ -138,20 +210,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { containerApi, type ContainersResponse } from '../services/api'
+import { containerApi, hostsApi, type ContainersResponse, type HostInfo } from '../services/api'
 
 const router = useRouter()
 
 const containers = ref<ContainersResponse>({})
+const hosts = ref<HostInfo[]>([])
 const loading = ref(false)
 const actionLoading = ref<string | null>(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
+const selectedHostId = ref<string | null>(null)
+const selectedContainers = ref<Set<string>>(new Set())
+const bulkActionLoading = ref(false)
 
 const filteredContainers = computed(() => {
   let filtered = Object.entries(containers.value)
+
+  if (selectedHostId.value) {
+    filtered = filtered.filter(([_, data]) => data.host_id === selectedHostId.value)
+  }
 
   if (statusFilter.value !== 'all') {
     filtered = filtered.filter(([_, data]) => {
@@ -212,13 +292,21 @@ const getStatusBadgeClass = (status: string | undefined): string => {
 const loadContainers = async () => {
   loading.value = true
   try {
-    containers.value = await containerApi.getContainers()
+    containers.value = await containerApi.getContainers(selectedHostId.value || undefined)
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'
     alert(errorMsg)
   } finally {
     loading.value = false
+  }
+}
+
+const loadHosts = async () => {
+  try {
+    hosts.value = await hostsApi.getHosts()
+  } catch (error: any) {
+    console.error('Failed to load hosts:', error)
   }
 }
 
@@ -307,7 +395,215 @@ const viewGenerateExporter = (id: string) => {
   router.push(`/container/${id}/generate-exporter`)
 }
 
+const toggleSelection = (id: string, event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  if (checked) {
+    selectedContainers.value.add(id)
+  } else {
+    selectedContainers.value.delete(id)
+  }
+}
+
+const clearSelection = () => {
+  selectedContainers.value.clear()
+}
+
+const isAllSelectedInGroup = (items: [string, any][]) => {
+  if (items.length === 0) return false
+  return items.every(([id]) => selectedContainers.value.has(id))
+}
+
+const toggleSelectAllInGroup = (items: [string, any][], event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  items.forEach(([id]) => {
+    if (checked) {
+      selectedContainers.value.add(id)
+    } else {
+      selectedContainers.value.delete(id)
+    }
+  })
+}
+
+const handleBulkStart = async () => {
+  if (selectedContainers.value.size === 0) return
+  
+  if (!confirm(`Start ${selectedContainers.value.size} container(s)?`)) {
+    return
+  }
+
+  bulkActionLoading.value = true
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+
+  for (const id of selectedContainers.value) {
+    try {
+      const container = containers.value[id]
+      const hostId = container?.host_id
+      if (!hostId) {
+        results.failed++
+        results.errors.push(`${id}: Host ID not available`)
+        continue
+      }
+      await containerApi.startContainer(id, hostId)
+      results.success++
+    } catch (error: any) {
+      results.failed++
+      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+    }
+  }
+
+  bulkActionLoading.value = false
+  await loadContainers()
+  clearSelection()
+  
+  alert(`Started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+}
+
+const handleBulkStop = async () => {
+  if (selectedContainers.value.size === 0) return
+  
+  if (!confirm(`Stop ${selectedContainers.value.size} container(s)?`)) {
+    return
+  }
+
+  bulkActionLoading.value = true
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+
+  for (const id of selectedContainers.value) {
+    try {
+      const container = containers.value[id]
+      const hostId = container?.host_id
+      if (!hostId) {
+        results.failed++
+        results.errors.push(`${id}: Host ID not available`)
+        continue
+      }
+      await containerApi.stopContainer(id, hostId)
+      results.success++
+    } catch (error: any) {
+      results.failed++
+      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+    }
+  }
+
+  bulkActionLoading.value = false
+  await loadContainers()
+  clearSelection()
+  
+  alert(`Stopped: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+}
+
+const handleBulkRemove = async () => {
+  if (selectedContainers.value.size === 0) return
+  
+  if (!confirm(`Remove ${selectedContainers.value.size} container(s)? This action cannot be undone.`)) {
+    return
+  }
+
+  bulkActionLoading.value = true
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+
+  for (const id of selectedContainers.value) {
+    try {
+      const container = containers.value[id]
+      const hostId = container?.host_id
+      if (!hostId) {
+        results.failed++
+        results.errors.push(`${id}: Host ID not available`)
+        continue
+      }
+      await containerApi.removeContainer(id, hostId)
+      results.success++
+    } catch (error: any) {
+      results.failed++
+      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+    }
+  }
+
+  bulkActionLoading.value = false
+  await loadContainers()
+  clearSelection()
+  
+  alert(`Removed: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+}
+
+const handleBulkGenerateConfig = async () => {
+  if (selectedContainers.value.size === 0) return
+  
+  if (!confirm(`Generate Prometheus config for ${selectedContainers.value.size} container(s)?`)) {
+    return
+  }
+
+  bulkActionLoading.value = true
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+
+  for (const id of selectedContainers.value) {
+    try {
+      const container = containers.value[id]
+      const hostId = container?.host_id
+      if (!hostId) {
+        results.failed++
+        results.errors.push(`${id}: Host ID not available`)
+        continue
+      }
+      await containerApi.generateConfig(id, hostId)
+      results.success++
+    } catch (error: any) {
+      results.failed++
+      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+    }
+  }
+
+  bulkActionLoading.value = false
+  await loadContainers()
+  clearSelection()
+  
+  alert(`Config generated: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+}
+
+const handleBulkStartExporter = async () => {
+  if (selectedContainers.value.size === 0) return
+  
+  const port = prompt(`Enter exporter port (default: 9100):`, '9100')
+  if (!port) return
+  
+  const exporterPort = parseInt(port)
+  if (isNaN(exporterPort) || exporterPort < 1024 || exporterPort > 65535) {
+    alert('Invalid port number. Must be between 1024 and 65535.')
+    return
+  }
+
+  if (!confirm(`Start exporter for ${selectedContainers.value.size} container(s) on port ${exporterPort}?`)) {
+    return
+  }
+
+  bulkActionLoading.value = true
+  const results = { success: 0, failed: 0, errors: [] as string[] }
+
+  for (const id of selectedContainers.value) {
+    try {
+      await containerApi.upExporter(id, exporterPort)
+      results.success++
+    } catch (error: any) {
+      results.failed++
+      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+    }
+  }
+
+  bulkActionLoading.value = false
+  await containerApi.updateContainers()
+  await loadContainers()
+  clearSelection()
+  
+  alert(`Exporter started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+}
+
+watch(selectedHostId, () => {
+  clearSelection()
+  loadContainers()
+})
+
 onMounted(() => {
+  loadHosts()
   loadContainers()
 })
 </script>
@@ -445,5 +741,62 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.checkbox-column {
+  width: 40px;
+  text-align: center;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.bulk-actions-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background-color: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bulk-actions-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selected-count {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 14px;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.bulk-actions-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>

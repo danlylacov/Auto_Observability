@@ -22,3 +22,9 @@ psycopg2
 celery
 
 requests
+
+# MinIO/S3
+boto3
+
+# YAML
+pyyaml

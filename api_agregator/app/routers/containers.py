@@ -8,6 +8,8 @@ from app.db.redis.docker_containers import DockerContainers
 from app.services.api_getaway import APIGateway
 from app.services.hosts_service import HostsService
 from app.db.postgres.database import get_db
+from app.models.postgres.container import Container
+from app.models.postgres.prometheus_config import PrometheusConfig
 
 
 router = APIRouter()
@@ -27,9 +29,34 @@ async def update_containers(db: Session = Depends(get_db)):
 @router.get("/containers", status_code=status.HTTP_200_OK)
 async def get_containers(
     host_id: str | None = Query(default=None, description="Идентификатор целевого хоста"),
+    db: Session = Depends(get_db),
 ) -> dict:
     docker_containers = DockerContainers()
     data = docker_containers.get_containers(host_name=host_id)
+    
+    if not data:
+        return data
+    
+    container_ids = list(data.keys())
+    
+    containers_in_db = db.query(Container).filter(
+        Container.id.in_(container_ids)
+    ).all()
+    containers_set = {c.id for c in containers_in_db}
+    
+    active_configs = db.query(PrometheusConfig).filter(
+        PrometheusConfig.container_id.in_(container_ids),
+        PrometheusConfig.status == "active"
+    ).all()
+    config_map = {config.container_id: config for config in active_configs}
+    
+    for container_id, container_data in data.items():
+        if isinstance(container_data, dict):
+            container_data['has_prometheus_config'] = (
+                container_id in containers_set and 
+                container_id in config_map
+            )
+    
     return data
 
 
