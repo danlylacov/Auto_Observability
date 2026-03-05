@@ -72,17 +72,17 @@ class DockerContainers(RedisConnection):
                 containers[container_id] = data
         return containers
 
-    def get_container(self, container_id: str, host_name: str) -> dict:
+    def get_container(self, container_id: str, host_id: str) -> dict:
         """
         Возвращает один контейнер по id и имени хоста.
         """
-        key = f"container:{host_name}:{container_id}"
+        key = f"container:{host_id}:{container_id}"
         value = self.client.get(key)
         if not value:
             return {}
         data = json.loads(value)
         if isinstance(data, dict):
-            data.setdefault("host_name", host_name)
+            data.setdefault("host_name", host_id)
         return data
 
     def delete_all_containers_by_host(self, host_name: str = None) -> int:

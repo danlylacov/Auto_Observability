@@ -1,7 +1,8 @@
 <template>
   <div class="container-details">
+    <!-- Header Section -->
     <div class="details-header">
-      <button @click="$emit('back')" class="btn btn-secondary">← Back</button>
+      <button @click="$emit('back')" class="btn btn-secondary back-btn">← Back</button>
       <div class="header-actions">
         <button 
           v-if="status === 'running'"
@@ -9,7 +10,8 @@
           class="btn btn-danger"
           :disabled="loading"
         >
-          Stop
+          <span v-if="loading" class="loading"></span>
+          <span v-else>Stop Container</span>
         </button>
         <button 
           v-else
@@ -17,7 +19,8 @@
           class="btn btn-success"
           :disabled="loading"
         >
-          Start
+          <span v-if="loading" class="loading"></span>
+          <span v-else>Start Container</span>
         </button>
         <button 
           @click="handleRemove" 
@@ -35,100 +38,158 @@
     </div>
 
     <div v-else-if="containerData" class="details-content">
-      <div class="card">
-        <h2 class="section-title">Basic Information</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">ID:</span>
-            <span class="info-value text-xs">{{ containerId }}</span>
+      <!-- Hero Card -->
+      <div class="card hero-card">
+        <div class="hero-header">
+          <div class="hero-title-section">
+            <h1 class="hero-title">{{ containerName }}</h1>
+            <span :class="['status-badge', statusBadgeClass]">
+              <span class="status-dot"></span>
+              {{ status }}
+            </span>
           </div>
-          <div class="info-item">
-            <span class="info-label">Name:</span>
-            <span class="info-value">{{ containerName }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Status:</span>
-            <span :class="['badge', statusBadgeClass]">{{ status }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Image:</span>
-            <span class="info-value">{{ image }}</span>
-          </div>
-          <div class="info-item" v-if="stack">
-            <span class="info-label">Stack:</span>
-            <span class="info-value">{{ stack }}</span>
-          </div>
-          <div class="info-item" v-if="created">
-            <span class="info-label">Created:</span>
-            <span class="info-value">{{ created }}</span>
-          </div>
-          <div class="info-item" v-if="startedAt">
-            <span class="info-label">Started At:</span>
-            <span class="info-value">{{ startedAt }}</span>
+          <div class="hero-meta">
+            <div class="meta-item" v-if="stack">
+              <span class="meta-label">Stack</span>
+              <span class="meta-value badge badge-info">{{ stack }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Container ID</span>
+              <span class="meta-value text-xs">{{ containerId }}</span>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="card" v-if="networkInfo.length > 0">
-        <h2 class="section-title">Network Settings</h2>
-        <div class="network-list">
-          <div v-for="(net, index) in networkInfo" :key="index" class="network-item">
-            <div class="network-header">
-              <span class="network-name">{{ net.name }}</span>
-              <span v-if="net.ip" class="network-ip">{{ net.ip }}</span>
+        <div class="hero-info">
+          <div class="info-row">
+            <div class="info-cell">
+              <span class="info-icon">📦</span>
+              <div class="info-content">
+                <span class="info-label">Image</span>
+                <span class="info-value">{{ image }}</span>
+              </div>
             </div>
-            <div v-if="net.gateway" class="network-detail">
-              <span class="detail-label">Gateway:</span>
-              <span class="detail-value">{{ net.gateway }}</span>
+            <div class="info-cell" v-if="created">
+              <span class="info-icon">🕒</span>
+              <div class="info-content">
+                <span class="info-label">Created</span>
+                <span class="info-value">{{ created }}</span>
+              </div>
             </div>
-            <div v-if="net.macAddress" class="network-detail">
-              <span class="detail-label">MAC Address:</span>
-              <span class="detail-value">{{ net.macAddress }}</span>
+            <div class="info-cell" v-if="startedAt">
+              <span class="info-icon">▶️</span>
+              <div class="info-content">
+                <span class="info-label">Started At</span>
+                <span class="info-value">{{ startedAt }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card" v-if="portsList.length > 0">
-        <h2 class="section-title">Ports</h2>
-        <div class="ports-list">
-          <div v-for="(port, index) in portsList" :key="index" class="port-item">
-            <div class="port-info">
-              <span class="port-label">Container:</span>
-              <span class="port-value">{{ port.container }}</span>
+      <!-- Main Content Grid -->
+      <div class="content-grid">
+        <!-- Network Settings -->
+        <div class="card section-card" v-if="networkInfo.length > 0">
+          <div class="card-header">
+            <h2 class="section-title">
+              <span class="section-icon">🌐</span>
+              Network Settings
+            </h2>
+          </div>
+          <div class="card-body">
+            <div class="network-grid">
+              <div v-for="(net, index) in networkInfo" :key="index" class="network-card">
+                <div class="network-card-header">
+                  <span class="network-name">{{ net.name }}</span>
+                  <span v-if="net.ip" class="network-ip">{{ net.ip }}</span>
+                </div>
+                <div class="network-details">
+                  <div class="network-detail-item" v-if="net.gateway">
+                    <span class="detail-label">Gateway</span>
+                    <span class="detail-value">{{ net.gateway }}</span>
+                  </div>
+                  <div class="network-detail-item" v-if="net.macAddress">
+                    <span class="detail-label">MAC Address</span>
+                    <span class="detail-value">{{ net.macAddress }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="port-info" v-if="port.host">
-              <span class="port-label">Host:</span>
-              <span class="port-value">{{ port.host }}</span>
+          </div>
+        </div>
+
+        <!-- Ports -->
+        <div class="card section-card" v-if="portsList.length > 0">
+          <div class="card-header">
+            <h2 class="section-title">
+              <span class="section-icon">🔌</span>
+              Port Mappings
+            </h2>
+          </div>
+          <div class="card-body">
+            <div class="ports-grid">
+              <div v-for="(port, index) in portsList" :key="index" class="port-card">
+                <div class="port-main">
+                  <span class="port-number">{{ port.container }}</span>
+                  <span class="port-protocol">{{ port.protocol.toUpperCase() }}</span>
+                </div>
+                <div class="port-mapping" v-if="port.host">
+                  <span class="mapping-label">→</span>
+                  <span class="mapping-value">{{ port.host }}</span>
+                </div>
+                <div class="port-mapping" v-else>
+                  <span class="mapping-label">Not exposed</span>
+                </div>
+              </div>
             </div>
-            <div class="port-info">
-              <span class="port-label">Protocol:</span>
-              <span class="port-value">{{ port.protocol }}</span>
+          </div>
+        </div>
+
+        <!-- Environment Variables -->
+        <div class="card section-card" v-if="envVars.length > 0">
+          <div class="card-header">
+            <h2 class="section-title">
+              <span class="section-icon">⚙️</span>
+              Environment Variables
+            </h2>
+            <span class="section-count">{{ envVars.length }}</span>
+          </div>
+          <div class="card-body">
+            <div class="env-container">
+              <div v-for="(env, index) in envVars" :key="index" class="env-row">
+                <span class="env-key">{{ getEnvKey(env) }}</span>
+                <span class="env-separator">=</span>
+                <span class="env-value">{{ getEnvValue(env) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Labels -->
+        <div class="card section-card" v-if="labelsList.length > 0">
+          <div class="card-header">
+            <h2 class="section-title">
+              <span class="section-icon">🏷️</span>
+              Labels
+            </h2>
+            <span class="section-count">{{ labelsList.length }}</span>
+          </div>
+          <div class="card-body">
+            <div class="labels-container">
+              <div v-for="(label, index) in labelsList" :key="index" class="label-row">
+                <span class="label-key">{{ label.key }}</span>
+                <span class="label-separator">:</span>
+                <span class="label-value">{{ label.value }}</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="card" v-if="envVars.length > 0">
-        <h2 class="section-title">Environment Variables</h2>
-        <div class="env-list">
-          <div v-for="(env, index) in envVars" :key="index" class="env-item">
-            <span class="env-key">{{ getEnvKey(env) }}:</span>
-            <span class="env-value">{{ getEnvValue(env) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" v-if="labelsList.length > 0">
-        <h2 class="section-title">Labels</h2>
-        <div class="labels-list">
-          <div v-for="(label, index) in labelsList" :key="index" class="label-item">
-            <span class="label-key">{{ label.key }}:</span>
-            <span class="label-value">{{ label.value }}</span>
-          </div>
-        </div>
-      </div>
-
+    <div v-else class="error-state">
+      <p>Container not found</p>
+      <button @click="$emit('back')" class="btn btn-primary">Go Back</button>
     </div>
   </div>
 </template>
@@ -231,8 +292,8 @@ const labelsList = computed(() => {
 })
 
 const statusBadgeClass = computed(() => {
-  if (status.value === 'running') return 'badge-success'
-  return 'badge-error'
+  if (status.value === 'running') return 'status-running'
+  return 'status-stopped'
 })
 
 const getEnvKey = (env: string): string => {
@@ -324,106 +385,271 @@ onMounted(() => {
 
 <style scoped>
 .container-details {
-  padding: 20px 0;
+  padding: 24px 0;
 }
 
 .details-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.back-btn {
+  font-size: 14px;
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .details-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
-.section-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 16px;
+/* Hero Card */
+.hero-card {
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+  border: 1px solid var(--border);
+  padding: 32px;
+}
+
+.hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.hero-title-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hero-title {
+  font-size: 32px;
+  font-weight: 700;
   color: var(--text-primary);
+  margin: 0;
+  line-height: 1.2;
 }
 
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+.status-badge {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
 }
 
-.info-item {
+.status-badge .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-running {
+  background-color: rgba(76, 175, 80, 0.15);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.status-running .status-dot {
+  background-color: var(--success);
+}
+
+.status-stopped {
+  background-color: rgba(244, 67, 54, 0.15);
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.status-stopped .status-dot {
+  background-color: var(--error);
+}
+
+.hero-meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  overflow: hidden;
+  gap: 12px;
+  align-items: flex-end;
 }
 
-.info-label {
-  font-size: 12px;
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.meta-label {
+  font-size: 11px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.info-value {
+.meta-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.hero-info {
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.info-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+}
+
+.info-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.info-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.info-content .info-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-content .info-value {
   font-size: 14px;
   color: var(--text-primary);
   font-weight: 500;
-  word-break: break-all;
-  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
-.info-value.text-xs {
-  font-family: 'Courier New', monospace;
-  word-break: break-all;
-  overflow-wrap: break-word;
-  max-width: 100%;
+/* Content Grid */
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
 }
 
-.network-list {
+.section-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-secondary);
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-icon {
+  font-size: 20px;
+}
+
+.section-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background-color: var(--bg-primary);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.card-body {
+  padding: 24px;
+}
+
+/* Network Grid */
+.network-grid {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.network-item {
-  padding: 12px;
+.network-card {
+  padding: 16px;
   background-color: var(--bg-primary);
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--border);
+  transition: all 0.2s;
 }
 
-.network-header {
+.network-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 188, 212, 0.1);
+}
+
+.network-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .network-name {
   font-weight: 600;
   color: var(--text-primary);
+  font-size: 15px;
 }
 
 .network-ip {
   font-family: 'Courier New', monospace;
   color: var(--accent);
   font-size: 14px;
+  font-weight: 500;
 }
 
-.network-detail {
+.network-details {
   display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.network-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 13px;
-  margin-top: 4px;
 }
 
 .detail-label {
@@ -433,104 +659,204 @@ onMounted(() => {
 .detail-value {
   color: var(--text-primary);
   font-family: 'Courier New', monospace;
+  font-weight: 500;
 }
 
-.ports-list {
-  display: flex;
-  flex-direction: column;
+/* Ports Grid */
+.ports-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
 }
 
-.port-item {
-  padding: 12px;
+.port-card {
+  padding: 16px;
   background-color: var(--bg-primary);
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.port-info {
-  display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: center;
+  transition: all 0.2s;
 }
 
-.port-label {
-  font-size: 12px;
+.port-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 188, 212, 0.1);
+}
+
+.port-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.port-number {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+.port-protocol {
+  font-size: 11px;
   color: var(--text-secondary);
+  background-color: var(--bg-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
   text-transform: uppercase;
 }
 
-.port-value {
-  font-size: 14px;
-  color: var(--text-primary);
+.port-mapping {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.mapping-label {
+  color: var(--text-secondary);
+}
+
+.mapping-value {
+  color: var(--accent);
   font-family: 'Courier New', monospace;
   font-weight: 500;
 }
 
-.env-list {
+/* Environment Variables */
+.env-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
-.env-item {
+.env-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 10px 12px;
   background-color: var(--bg-primary);
   border-radius: 6px;
-  font-size: 13px;
   border: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+  transition: all 0.2s;
+}
+
+.env-row:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-secondary);
 }
 
 .env-key {
   color: var(--accent);
   font-weight: 500;
-  font-family: 'Courier New', monospace;
+  flex-shrink: 0;
+}
+
+.env-separator {
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .env-value {
   color: var(--text-primary);
-  font-family: 'Courier New', monospace;
   word-break: break-all;
+  flex: 1;
 }
 
-.labels-list {
+/* Labels */
+.labels-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
-.label-item {
+.label-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 10px 12px;
   background-color: var(--bg-primary);
   border-radius: 6px;
-  font-size: 13px;
   border: 1px solid var(--border);
-  display: flex;
-  gap: 8px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.label-row:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-secondary);
 }
 
 .label-key {
   color: var(--accent);
   font-weight: 500;
+  flex-shrink: 0;
+}
+
+.label-separator {
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .label-value {
   color: var(--text-primary);
   word-break: break-all;
+  flex: 1;
 }
 
-.loading-state {
+/* Loading & Error States */
+.loading-state,
+.error-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
   color: var(--text-secondary);
+}
+
+.error-state {
+  color: var(--error);
+}
+
+.error-state p {
+  font-size: 18px;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero-meta {
+    align-items: flex-start;
+  }
+
+  .meta-item {
+    align-items: flex-start;
+  }
+
+  .info-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ports-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

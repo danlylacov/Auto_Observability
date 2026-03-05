@@ -57,60 +57,10 @@ class PrometheusConfigGenerator:
         """
         return stack.lower().replace(' ', '_')
 
-    def _get_container_ip(self, container_info: Dict[str, Any]) -> Optional[str]:
-        """
-        Извлекает IP адрес контейнера
-        Если IP нет (контейнер остановлен), возвращает None
-        """
-        network_settings = container_info.get('NetworkSettings', {})
-        if network_settings.get('IPAddress'):
-            return network_settings['IPAddress']
-        networks = network_settings.get('Networks', {})
-        if networks:
-            first_network = next(iter(networks.values()))
-            ip = first_network.get('IPAddress')
-            if ip:
-                return ip
-
-        return None
-    
-    def _get_container_target(self, container_info: Dict[str, Any], container_name: str) -> str:
-        """
-        Получает целевой адрес для подключения к контейнеру.
-        Приоритет: IP адрес > имя сервиса из labels > имя контейнера
-        """
-        # Пробуем получить IP адрес
-        ip_address = self._get_container_ip(container_info)
-        if ip_address:
-            return ip_address
-        
-        # Если IP нет, используем имя сервиса из Docker Compose labels
-        labels = container_info.get('Config', {}).get('Labels', {})
-        service_name = labels.get('com.docker.compose.service')
-        if service_name:
-            return service_name
-        
-        # Используем имя контейнера (без префикса /)
-        return container_name.lstrip('/')
-
-    def _get_host_port(self, container_info: Dict[str, Any]) -> Optional[str]:
-        """
-        Извлекает хостовой порт контейнера
-        """
-        host_config = container_info.get('HostConfig', {})
-        port_bindings = host_config.get('PortBindings', {})
-
-        if port_bindings:
-            for container_port, host_ports in port_bindings.items():
-                if host_ports and len(host_ports) > 0:
-                    return host_ports[0].get('HostPort')
-        return None
-
     def _build_prometheus_config(
             self,
             container_name: str,
             container_info: Dict[str, Any],
-            stack_key: str,
             exporter_config: Dict[str, Any],
             target_address: str
     ) -> Dict[str, Any]:
@@ -118,86 +68,39 @@ class PrometheusConfigGenerator:
         Строит конфигурацию Prometheus
         """
         labels = container_info.get('Config', {}).get('Labels', {})
-        host_port = self._get_host_port(container_info)
 
         job_name = f"{container_name}{exporter_config.get('job_name_suffix', '')}"
 
-        static_labels = {
-            'container_id': container_info.get('Id', '')[:12],
-            'container_name': container_name,
-            'stack': stack_key,
-            'service': labels.get('com.docker.compose.service', 'unknown'),
-            'project': labels.get('com.docker.compose.project', 'unknown'),
-            'exporter_image': exporter_config.get('exporter_image', 'unknown')
+        scrape_config = {
+            'job_name': job_name,
+            'scrape_interval': '15s',
+            'scrape_timeout': '10s',
+            'file_sd_configs': [
+                {
+                    'files': [f'targets/{job_name}.yml']
+                }
+            ]
         }
 
-        if host_port:
-            static_labels['host_port'] = host_port
+        target_yml = {
+            'targets': [f'{target_address}:{self.env_generator.get_exporter_port()[0]}'],  # Статический IP!
+            'labels': labels
+        }
 
         prometheus_config = {
-            'global': {
-                'scrape_interval': '15s',
-                'evaluation_interval': '15s',
-                'external_labels': {
-                    'monitor': 'docker-container-monitor'
-                }
-            },
-            'scrape_configs': [
-                {
-                    'job_name': job_name,
-                    'scrape_interval': '15s',
-                    'scrape_timeout': '10s',
-                    'metrics_path': exporter_config.get('metrics_path', '/metrics'),
-                    'static_configs': [
-                        {
-                            'targets': [f"{target_address}:{exporter_config.get('exporter_port', 9090)}"],
-                            'labels': static_labels
-                        }
-                    ],
-                    'relabel_configs': [
-                        {
-                            'source_labels': ['__address__'],
-                            'target_label': 'instance',
-                            'replacement': container_name
-                        },
-                        {
-                            'source_labels': ['__meta_docker_container_name'],
-                            'regex': '/(.*)',
-                            'target_label': 'container_name'
-                        }
-                    ]
-                }
-            ],
-            'exporter_info': {
-                'container_name': container_name,
-                'stack': stack_key,
-                'exporter_image': exporter_config.get('exporter_image', 'unknown'),
-                'exporter_port': exporter_config.get('exporter_port', 9090),
-                'target_address': target_address,
-                'job_name': job_name
-            }
+            'scrape_config': scrape_config,
+            f'target': target_yml
         }
 
         return prometheus_config
-    
-    def get_exporter_env_vars(
-        self,
-        container_info: Dict[str, Any],
-        stack_key: str,
-        network_name: Optional[str] = None
-    ) -> Dict[str, str]:
-        """
-        Генерирует переменные окружения для экспортера
-        """
-        return self.env_generator.generate_env_vars(container_info, stack_key, network_name)
-    
+
     def get_container_network(self, container_info: Dict[str, Any]) -> Optional[str]:
         """
         Извлекает имя сети контейнера
         """
         return self.env_generator.get_container_network(container_info)
 
-    def generate_config(self, container_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def generate_config(self, container_data: Dict[str, Any], target_address: str) -> Optional[Dict[str, Any]]:
         """
         Генерирует конфигурацию Prometheus на основе данных Docker контейнера
         """
@@ -223,48 +126,22 @@ class PrometheusConfigGenerator:
 
         exporter_config = self.exporter_configs[stack_key]
 
-        # Получаем целевой адрес для подключения (IP, имя сервиса или имя контейнера)
-        target_address = self._get_container_target(container_info, container_name)
-        if not target_address:
-            print(f"Не удалось определить целевой адрес для контейнера {container_name}")
-            return None
-
         # Получаем сеть контейнера
         network_name = self.get_container_network(container_info)
-        
-        # Генерируем переменные окружения для экспортера
-        exporter_env_vars = self.get_exporter_env_vars(container_info, stack_key, network_name)
 
         # Строим конфигурацию
         config = self._build_prometheus_config(
             container_name=container_name,
             container_info=container_info,
-            stack_key=stack_key,
             exporter_config=exporter_config,
             target_address=target_address
         )
-        
-        # Добавляем информацию о сети и env переменных в exporter_info
-        if config and 'exporter_info' in config:
-            config['exporter_info']['network'] = network_name
-            config['exporter_info']['exporter_env_vars'] = exporter_env_vars
-        
-        return config
 
-    def save_config(self, config: Dict[str, Any], filename: str = 'prometheus.yml') -> None:
-        """
-        Сохраняет конфигурацию Prometheus в YAML файл
-        """
-        try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            print(f"Конфигурация сохранена в {filename}")
-        except Exception as e:
-            print(f"Ошибка при сохранении конфигурации: {e}")
+        result = {
+            'config': config,
+            'exporter_config': exporter_config
+        }
 
-    def get_exporter_info(self, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Извлекает информацию об экспортере из конфигурации
-        """
-        print(config)
-        return config.get('exporter_info')
+        result['exporter_config']['network'] = network_name
+
+        return result

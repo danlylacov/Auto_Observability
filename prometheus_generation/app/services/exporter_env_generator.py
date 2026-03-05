@@ -268,3 +268,6 @@ class ExporterEnvGenerator:
         
         return network_names[0]
 
+    def get_exporter_port(self):
+        return [config['exporter_port'] for config in self.exporter_configs.values()]
+
