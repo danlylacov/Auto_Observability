@@ -4,6 +4,7 @@ import ContainerDetailView from './views/ContainerDetailView.vue'
 import HostsView from './views/HostsView.vue'
 import ConfigView from './views/ConfigView.vue'
 import GenerateExporterView from './views/GenerateExporterView.vue'
+import PrometheusView from './views/PrometheusView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -36,6 +37,11 @@ const router = createRouter({
       path: '/config',
       name: 'config',
       component: ConfigView
+    },
+    {
+      path: '/prometheus',
+      name: 'prometheus',
+      component: PrometheusView
     }
   ]
 })

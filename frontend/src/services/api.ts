@@ -176,3 +176,46 @@ export const containerApi = {
   }
 }
 
+export interface PrometheusConfigInfo {
+  config_id: number
+  container_id: string
+  container_name: string
+  stack: string
+  exporter_image: string
+  exporter_port: number
+  target_address: string
+  job_name: string
+  minio_bucket: string
+  minio_file_path: string
+  host_name: string
+  created_at: string | null
+  updated_at: string | null
+  exporter: {
+    running: boolean
+    container_id: string | null
+    info: any | null
+  }
+  config_metadata: any
+}
+
+export interface PrometheusConfigsResponse {
+  total: number
+  configs: PrometheusConfigInfo[]
+}
+
+export interface PrometheusConfigFiles {
+  [fileName: string]: any
+}
+
+export const prometheusApi = {
+  async getAllConfigs(): Promise<PrometheusConfigsResponse> {
+    const response = await api.get<PrometheusConfigsResponse>('/api/v1/prometheus/get_all_configs')
+    return response.data
+  },
+
+  async getConfigFiles(configId: number): Promise<PrometheusConfigFiles> {
+    const response = await api.get<PrometheusConfigFiles>(`/api/v1/prometheus/get_config_files/${configId}`)
+    return response.data
+  }
+}
+

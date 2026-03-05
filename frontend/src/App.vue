@@ -7,6 +7,7 @@
           <nav class="nav-tabs">
             <router-link to="/hosts" class="nav-link">Hosts</router-link>
             <router-link to="/containers" class="nav-link">Containers</router-link>
+            <router-link to="/prometheus" class="nav-link">Prometheus</router-link>
             <router-link to="/config" class="nav-link">Configuration</router-link>
           </nav>
         </div>

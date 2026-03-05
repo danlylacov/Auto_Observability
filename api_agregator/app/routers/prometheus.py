@@ -317,20 +317,28 @@ async def get_all_configs(db: Session = Depends(get_db)) -> dict[str, Any]:
     for config in configs:
         config_metadata = config.config_metadata or {}
         host_name = config_metadata.get('host_name', 'localhost')
-        
-        exporter_name = f"{config.container_name}-exporter"
+
+        normalized_container_name = config.container_name.lstrip("/")
+        exporter_name = f"{normalized_container_name}-exporter"
         exporter_info = None
         exporter_running = False
         exporter_container_id = None
 
+        logger.debug(f"Looking for exporter: {exporter_name} on host: {host_name} (container_name: {config.container_name})")
+
         for container_id, container_data in all_containers.items():
             container_name = container_data.get("info", {}).get("Name", "").lstrip("/")
             container_host = container_data.get("host_name") or container_data.get("host_id")
-            
-            if container_name == exporter_name and container_host == host_name:
+
+            if "-exporter" in container_name.lower():
+                logger.debug(f"Found potential exporter container: {container_name} on host: {container_host}")
+
+            if container_name.lower() == exporter_name.lower() and container_host == host_name:
                 container_status = container_data.get("info", {}).get("State", {}).get("Status", "")
-                exporter_running = container_status == "running"
+                exporter_running = container_status.lower() in ("running", "up")
                 exporter_container_id = container_id
+                
+                logger.info(f"Found exporter: {container_name}, status: {container_status}, running: {exporter_running}")
                 
                 exporter_info = {
                     "container_id": container_id,
