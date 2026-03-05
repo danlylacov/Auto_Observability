@@ -328,3 +328,5 @@ npm run dev
 
 Проект разработан в рамках дипломной работы.
 
+Архитектура:
+[клик](https://miro.com/welcomeonboard/b3NGc3RkMnlLTGtMckk4ckg1Ykxva2Q4NUlQemNwUDZ5VXFORlRObENrWHBMYTI3eXFJZjdxZWtaOXdwZm5tcklsSDZNRlFrSXh3cUNhaXhJQWFwWjRNR3RGUDJxd0RuZi9mOFFQVHZEVkk3MCs5WENlK1k3YUNFQTQ0Slo2c09Bd044SHFHaVlWYWk0d3NxeHNmeG9BPT0hdjE=?share_link_id=535618662280)
