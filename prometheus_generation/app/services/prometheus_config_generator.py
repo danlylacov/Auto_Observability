@@ -129,6 +129,13 @@ class PrometheusConfigGenerator:
         # Получаем сеть контейнера
         network_name = self.get_container_network(container_info)
 
+        # Генерируем правильные env_vars с IP адресом целевого контейнера
+        generated_env_vars = self.env_generator.generate_env_vars(
+            container_info=container_info,
+            stack_key=stack_key,
+            network_name=network_name
+        )
+
         # Строим конфигурацию
         config = self._build_prometheus_config(
             container_name=container_name,
@@ -143,5 +150,7 @@ class PrometheusConfigGenerator:
         }
 
         result['exporter_config']['network'] = network_name
+        # Заменяем базовые env_vars на сгенерированные с правильным IP адресом
+        result['exporter_config']['env_vars'] = generated_env_vars
 
         return result

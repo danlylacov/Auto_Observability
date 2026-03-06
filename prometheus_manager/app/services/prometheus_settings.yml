@@ -1,0 +1,4 @@
+prometheus-settings:
+  image: "prom/prometheus:latest"
+  name: "prometheus-service"
+  port: 9090
