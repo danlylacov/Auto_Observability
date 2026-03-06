@@ -27,8 +27,6 @@ async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
                 detail="Не удалось сгенерировать конфигурацию. Проверьте данные контейнера и классификацию."
             )
 
-
-
         minio_service = MinioService()
         upload_data = minio_service.upload_config(
             config['config']["scrape_config"],

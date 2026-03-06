@@ -12,6 +12,7 @@ from app.db.redis.docker_containers import DockerContainers
 from app.models.postgres.container import Container
 from app.models.postgres.prometheus_config import PrometheusConfig
 from app.services.api_getaway import APIGateway
+from app.models.main_config import AddServiceRequest, RemoveServiceRequest
 from app.services.hosts_service import HostsService
 from app.services.minio_service import MinioService
 
@@ -399,3 +400,44 @@ async def get_config_files(config_id: int, db: Session = Depends(get_db)):
     )
     return result
 
+
+
+@router.post("/main_config/add", status_code=status.HTTP_200_OK)
+async def add_main_config_service(request: AddServiceRequest) -> Dict[str, Any]:
+    """
+    Добавляет сервис в основной конфиг Prometheus
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='POST',
+        endpoint='/api/v1/main-config/add',
+        json_data=request.model_dump()
+    )
+    return result
+
+
+@router.delete("/main_config/remove", status_code=status.HTTP_200_OK)
+async def remove_main_config_service(request: RemoveServiceRequest) -> Dict[str, Any]:
+    """
+    Удаляет сервис из основного конфига Prometheus
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='DELETE',
+        endpoint='/api/v1/main-config/remove',
+        json_data=request.model_dump()
+    )
+    return result
+
+
+@router.get("/main_config/get", status_code=status.HTTP_200_OK)
+async def get_main_config() -> Dict[str, Any]:
+    """
+    Получает полный конфиг Prometheus и все файлы targets
+    """
+    api_gateway = APIGateway(prometheus_generation_url)
+    result = api_gateway.make_request(
+        method='GET',
+        endpoint='/api/v1/main-config/'
+    )
+    return result
