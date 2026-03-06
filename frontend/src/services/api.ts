@@ -207,6 +207,53 @@ export interface PrometheusConfigFiles {
   [fileName: string]: any
 }
 
+export interface MainPrometheusConfig {
+  main_config: {
+    global?: {
+      scrape_interval?: string
+    }
+    scrape_configs: Array<{
+      job_name: string
+      scrape_interval?: string
+      scrape_timeout?: string
+      file_sd_configs?: Array<{
+        files: string[]
+      }>
+      [key: string]: any
+    }>
+  } | null
+  targets: {
+    [fileName: string]: any
+  }
+}
+
+export interface AddServiceRequest {
+  scrape_config: {
+    scrape_configs: Array<{
+      job_name: string
+      scrape_interval?: string
+      scrape_timeout?: string
+      file_sd_configs?: Array<{
+        files: string[]
+      }>
+      [key: string]: any
+    }>
+  }
+  target: Array<{
+    targets: string[]
+    labels?: Record<string, any>
+  }> | {
+    targets: string[]
+    labels?: Record<string, any>
+  }
+  target_name: string
+}
+
+export interface RemoveServiceRequest {
+  job_name: string
+  target_name: string
+}
+
 export const prometheusApi = {
   async getAllConfigs(): Promise<PrometheusConfigsResponse> {
     const response = await api.get<PrometheusConfigsResponse>('/api/v1/prometheus/get_all_configs')
@@ -215,6 +262,21 @@ export const prometheusApi = {
 
   async getConfigFiles(configId: number): Promise<PrometheusConfigFiles> {
     const response = await api.get<PrometheusConfigFiles>(`/api/v1/prometheus/get_config_files/${configId}`)
+    return response.data
+  },
+
+  async getMainConfig(): Promise<MainPrometheusConfig> {
+    const response = await api.get<MainPrometheusConfig>('/api/v1/prometheus/main_config/get')
+    return response.data
+  },
+
+  async addServiceToMainConfig(request: AddServiceRequest): Promise<any> {
+    const response = await api.post('/api/v1/prometheus/main_config/add', request)
+    return response.data
+  },
+
+  async removeServiceFromMainConfig(request: RemoveServiceRequest): Promise<any> {
+    const response = await api.delete('/api/v1/prometheus/main_config/remove', { data: request })
     return response.data
   }
 }

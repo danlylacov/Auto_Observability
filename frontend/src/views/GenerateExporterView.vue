@@ -180,6 +180,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { containerApi, type ContainerData } from '../services/api'
+import { showToast } from '../utils/toast'
 
 const router = useRouter()
 const route = useRoute()
@@ -287,7 +288,7 @@ const loadContainer = async () => {
   } catch (error: any) {
     console.error('Failed to load container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load container details'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }

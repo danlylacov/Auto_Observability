@@ -99,6 +99,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { hostsApi, type HostInfo } from '../services/api'
+import { showToast } from '../utils/toast'
 
 const hosts = ref<HostInfo[]>([])
 const loading = ref(false)
@@ -126,7 +127,7 @@ const loadHosts = async () => {
   } catch (error: any) {
     console.error('Failed to load hosts:', error)
     const msg = error.response?.data?.detail || error.message || 'Failed to load hosts'
-    alert(msg)
+    showToast(msg, 'error')
   } finally {
     loading.value = false
   }
@@ -159,7 +160,7 @@ const closeForm = () => {
 
 const saveHost = async () => {
   if (!form.value.host || !form.value.port) {
-    alert('Host and port are required')
+    showToast('Host and port are required', 'error')
     return
   }
   saving.value = true
@@ -184,7 +185,7 @@ const saveHost = async () => {
   } catch (error: any) {
     console.error('Failed to save host:', error)
     const msg = error.response?.data?.detail || error.message || 'Failed to save host'
-    alert(msg)
+    showToast(msg, 'error')
   } finally {
     saving.value = false
   }
@@ -201,7 +202,7 @@ const deleteHost = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to delete host:', error)
     const msg = error.response?.data?.detail || error.message || 'Failed to delete host'
-    alert(msg)
+    showToast(msg, 'error')
   }
 }
 

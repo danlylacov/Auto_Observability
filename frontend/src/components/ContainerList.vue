@@ -213,6 +213,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { containerApi, hostsApi, type ContainersResponse, type HostInfo } from '../services/api'
+import { showToast } from '../utils/toast'
 
 const router = useRouter()
 
@@ -296,7 +297,7 @@ const loadContainers = async () => {
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -318,7 +319,7 @@ const handleRefresh = async () => {
   } catch (error: any) {
     console.error('Failed to refresh containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to refresh containers'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -338,7 +339,7 @@ const handleStart = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to start container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to start container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -358,7 +359,7 @@ const handleStop = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to stop container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to stop container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -381,7 +382,7 @@ const handleRemove = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to remove container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to remove container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -455,7 +456,8 @@ const handleBulkStart = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkStop = async () => {
@@ -489,7 +491,8 @@ const handleBulkStop = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Stopped: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Stopped: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkRemove = async () => {
@@ -523,7 +526,8 @@ const handleBulkRemove = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Removed: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Removed: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkGenerateConfig = async () => {
@@ -557,7 +561,8 @@ const handleBulkGenerateConfig = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Config generated: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Config generated: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkStartExporter = async () => {
@@ -568,7 +573,7 @@ const handleBulkStartExporter = async () => {
   
   const exporterPort = parseInt(port)
   if (isNaN(exporterPort) || exporterPort < 1024 || exporterPort > 65535) {
-    alert('Invalid port number. Must be between 1024 and 65535.')
+    showToast('Invalid port number. Must be between 1024 and 65535.', 'error')
     return
   }
 
@@ -594,7 +599,8 @@ const handleBulkStartExporter = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Exporter started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Exporter started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 watch(selectedHostId, () => {

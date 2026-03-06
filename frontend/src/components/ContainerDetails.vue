@@ -201,6 +201,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { containerApi, type ContainerData } from '../services/api'
+import { showToast } from '../utils/toast'
 
 const props = defineProps<{
   containerId: string
@@ -323,7 +324,7 @@ const loadContainer = async () => {
   } catch (error: any) {
     console.error('Failed to load container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load container details'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -341,7 +342,7 @@ const handleStart = async () => {
   } catch (error: any) {
     console.error('Failed to start container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to start container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -359,7 +360,7 @@ const handleStop = async () => {
   } catch (error: any) {
     console.error('Failed to stop container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to stop container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -380,7 +381,7 @@ const handleRemove = async () => {
   } catch (error: any) {
     console.error('Failed to remove container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to remove container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }

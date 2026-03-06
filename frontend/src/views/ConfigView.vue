@@ -45,6 +45,7 @@ import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } 
 import { lintKeymap } from '@codemirror/lint'
 import yamlLib from 'js-yaml'
 import { configApi } from '../services/api'
+import { showToast } from '../utils/toast'
 
 const selectedConfig = ref('prometheus-signature')
 const editorValue = ref('')
@@ -213,7 +214,7 @@ const saveConfig = async () => {
     if (selectedConfig.value === 'prometheus-signature') {
       await configApi.updateSignature(editorValue.value)
     }
-    alert('Configuration saved')
+    showToast('Configuration saved', 'success')
   } catch (e: any) {
     console.error('Failed to save config:', e)
     const msg = e.response?.data?.detail || e.message || 'Failed to save config'
