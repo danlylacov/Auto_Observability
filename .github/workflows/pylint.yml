@@ -8,6 +8,9 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10"]
+    # Добавляем права на запись в репозиторий
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
     
@@ -23,41 +26,77 @@ jobs:
     
     - name: Analysing the code with pylint
       run: |
+        # Запускаем pylint и сохраняем результат
         pylint $(git ls-files '*.py') --fail-under=0 > pylint_output.txt || true
     
     - name: Extract pylint score
       id: pylint_score
       run: |
+        # Извлекаем оценку из вывода pylint
         score=$(grep -oP 'Your code has been rated at \K[0-9.]+' pylint_output.txt | head -1)
         if [ -z "$score" ]; then
           score="0.0"
         fi
+        # Округляем до 2 знаков
+        score=$(printf "%.2f" $score)
         echo "score=$score" >> $GITHUB_OUTPUT
         echo "Extracted score: $score"
     
-    - name: Determine color based on score
-      id: color
+    - name: Create badge SVG
       run: |
         score=${{ steps.pylint_score.outputs.score }}
+        
+        # Определяем цвет
         if (( $(echo "$score >= 9.0" | bc -l) )); then
           color="brightgreen"
+          hex="4c1"
         elif (( $(echo "$score >= 7.0" | bc -l) )); then
           color="green"
+          hex="97CA00"
         elif (( $(echo "$score >= 5.0" | bc -l) )); then
           color="yellow"
+          hex="dfb317"
         elif (( $(echo "$score >= 3.0" | bc -l) )); then
           color="orange"
+          hex="fe7d37"
         else
           color="red"
+          hex="e05d44"
         fi
-        echo "color=$color" >> $GITHUB_OUTPUT
+        
+        # Создаем директорию для бейджей
+        mkdir -p .badges
+        
+        # Создаем SVG бейдж
+        cat > .badges/pylint.svg << EOF
+        <svg xmlns="http://www.w3.org/2000/svg" width="100" height="20">
+          <linearGradient id="b" x2="0" y2="100%">
+            <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+            <stop offset="1" stop-opacity=".1"/>
+          </linearGradient>
+          <mask id="a">
+            <rect width="100" height="20" rx="3" fill="#fff"/>
+          </mask>
+          <g mask="url(#a)">
+            <path fill="#555" d="M0 0h45v20H0z"/>
+            <path fill="#$hex" d="M45 0h55v20H45z"/>
+            <path fill="url(#b)" d="M0 0h100v20H0z"/>
+          </g>
+          <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
+            <text x="22.5" y="15" fill="#010101" fill-opacity=".3">pylint</text>
+            <text x="22.5" y="14">pylint</text>
+            <text x="72.5" y="15" fill="#010101" fill-opacity=".3">$score/10</text>
+            <text x="72.5" y="14">$score/10</text>
+          </g>
+        </svg>
+        EOF
+        
+        echo "✅ Created badge with score $score/10 ($color)"
     
-    - name: Create pylint badge
-      uses: schneegans/dynamic-badges-action@v1.7.0
-      with:
-        auth: ${{ secrets.GIST_SECRET }}
-        gistID: ${{ secrets.GIST_ID }}
-        filename: pylint.json
-        label: pylint
-        message: ${{ steps.pylint_score.outputs.score }}/10
-        color: ${{ steps.color.outputs.color }}
+    - name: Commit badge
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .badges/pylint.svg
+        git diff --quiet && git diff --staged --quiet || git commit -m "Update pylint badge [skip ci]"
+        git push
