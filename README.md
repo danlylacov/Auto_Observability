@@ -1,6 +1,7 @@
 # Auto Observability
 
-![Pylint](https://img.shields.io/endpoint?url=https://gist.github.com/danlylacov/1d312c23ace23b86c6ea4d41e043d3bc/raw/pylint.json)
+
+![Pylint](.badges/pylint.svg)
 
 Система автоматического мониторинга Docker-контейнеров с генерацией конфигураций Prometheus на основе автоматической классификации технологического стека.
 
