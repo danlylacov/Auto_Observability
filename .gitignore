@@ -4,3 +4,4 @@ venv
 .gitignore
 api_agregator/celerybeat-schedule.db
 .env
+.cursor

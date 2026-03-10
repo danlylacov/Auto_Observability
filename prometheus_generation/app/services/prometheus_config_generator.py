@@ -1,15 +1,28 @@
-import yaml
+import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import yaml
+
 from app.services.exporter_env_generator import ExporterEnvGenerator
+
+logger = logging.getLogger(__name__)
 
 
 class PrometheusConfigGenerator:
     """
-    Класс для генерации конфигурации Prometheus на основе данных Docker контейнера
+    Класс для генерации конфигурации Prometheus на основе данных Docker контейнера.
+
+    Предоставляет методы для создания конфигураций Prometheus для различных стеков технологий.
     """
 
     def __init__(self, signatures_path: Optional[str] = None):
+        """
+        Инициализация генератора конфигураций Prometheus.
+
+        Args:
+            signatures_path: Путь к файлу signatures.yml. Если None, используется файл в текущей директории.
+        """
         if signatures_path is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             signatures_path = os.path.join(current_dir, 'signatures.yml')
@@ -20,22 +33,31 @@ class PrometheusConfigGenerator:
 
     def _load_signatures(self) -> Dict[str, Any]:
         """
-        Загружает конфигурации экспортеров из файла signatures.yml
+        Загружает конфигурации экспортеров из файла signatures.yml.
+
+        Returns:
+            Dict[str, Any]: Словарь с конфигурациями экспортеров
         """
         try:
             with open(self.signatures_path, 'r', encoding='utf-8') as f:
                 signatures = yaml.safe_load(f)
             return signatures or {}
         except FileNotFoundError:
-            print(f"Файл signatures.yml не найден по пути: {self.signatures_path}")
+            logger.error(f"Файл signatures.yml не найден по пути: {self.signatures_path}")
             return {}
         except yaml.YAMLError as e:
-            print(f"Ошибка при парсинге YAML файла: {e}")
+            logger.error(f"Ошибка при парсинге YAML файла: {e}")
             return {}
 
     def _get_container_name(self, container_info: Dict[str, Any]) -> str:
         """
-        Извлекает имя контейнера из информации о контейнере
+        Извлекает имя контейнера из информации о контейнере.
+
+        Args:
+            container_info: Информация о контейнере
+
+        Returns:
+            str: Имя контейнера
         """
         container_name = container_info.get('Name', '').lstrip('/')
         if not container_name:
@@ -44,7 +66,13 @@ class PrometheusConfigGenerator:
 
     def _get_stack_from_classification(self, classification: Dict[str, Any]) -> Optional[str]:
         """
-        Извлекает стек из результатов классификации
+        Извлекает стек из результатов классификации.
+
+        Args:
+            classification: Результаты классификации контейнера
+
+        Returns:
+            Optional[str]: Название стека или None
         """
         result = classification.get('result', [])
         if result and len(result) > 0:
@@ -53,7 +81,13 @@ class PrometheusConfigGenerator:
 
     def _normalize_stack_name(self, stack: str) -> str:
         """
-        Нормализует название стека для поиска в конфигурациях
+        Нормализует название стека для поиска в конфигурациях.
+
+        Args:
+            stack: Название стека
+
+        Returns:
+            str: Нормализованное название стека
         """
         return stack.lower().replace(' ', '_')
 
@@ -65,7 +99,16 @@ class PrometheusConfigGenerator:
             target_address: str
     ) -> Dict[str, Any]:
         """
-        Строит конфигурацию Prometheus
+        Строит конфигурацию Prometheus.
+
+        Args:
+            container_name: Имя контейнера
+            container_info: Информация о контейнере
+            exporter_config: Конфигурация экспортера
+            target_address: Адрес целевого контейнера
+
+        Returns:
+            Dict[str, Any]: Конфигурация Prometheus
         """
         labels = container_info.get('Config', {}).get('Labels', {})
 
@@ -83,7 +126,7 @@ class PrometheusConfigGenerator:
         }
 
         target_yml = {
-            'targets': [f'{target_address}:{self.env_generator.get_exporter_port()[0]}'],  # Статический IP!
+            'targets': [f'{target_address}:{self.env_generator.get_exporter_port()[0]}'],
             'labels': labels
         }
 
@@ -96,40 +139,53 @@ class PrometheusConfigGenerator:
 
     def get_container_network(self, container_info: Dict[str, Any]) -> Optional[str]:
         """
-        Извлекает имя сети контейнера
+        Извлекает имя сети контейнера.
+
+        Args:
+            container_info: Информация о контейнере
+
+        Returns:
+            Optional[str]: Имя сети или None
         """
         return self.env_generator.get_container_network(container_info)
 
     def generate_config(self, container_data: Dict[str, Any], target_address: str) -> Optional[Dict[str, Any]]:
         """
-        Генерирует конфигурацию Prometheus на основе данных Docker контейнера
+        Генерирует конфигурацию Prometheus на основе данных Docker контейнера.
+
+        Args:
+            container_data: Данные о контейнере (info и classification)
+            target_address: Адрес целевого контейнера
+
+        Returns:
+            Optional[Dict[str, Any]]: Конфигурация Prometheus или None при ошибке
         """
         container_info = container_data.get('info', {})
         classification = container_data.get('classification', {})
 
-        # Получаем имя контейнера
         container_name = self._get_container_name(container_info)
 
-        # Получаем стек из классификации
         stack = self._get_stack_from_classification(classification)
         if not stack:
-            print(f"Не удалось определить стек для контейнера {container_name}")
+            logger.warning(f"Не удалось определить стек для контейнера {container_name}")
             return None
 
-        # Нормализуем название стека
         stack_key = self._normalize_stack_name(stack)
 
-        # Проверяем наличие конфигурации для стека
         if stack_key not in self.exporter_configs:
-            print(f"Нет готовой конфигурации для стека: {stack} (ключ: {stack_key})")
+            logger.warning(f"Нет готовой конфигурации для стека: {stack} (ключ: {stack_key})")
             return None
 
         exporter_config = self.exporter_configs[stack_key]
 
-        # Получаем сеть контейнера
         network_name = self.get_container_network(container_info)
 
-        # Строим конфигурацию
+        generated_env_vars = self.env_generator.generate_env_vars(
+            container_info=container_info,
+            stack_key=stack_key,
+            network_name=network_name
+        )
+
         config = self._build_prometheus_config(
             container_name=container_name,
             container_info=container_info,
@@ -143,5 +199,6 @@ class PrometheusConfigGenerator:
         }
 
         result['exporter_config']['network'] = network_name
+        result['exporter_config']['env_vars'] = generated_env_vars
 
         return result

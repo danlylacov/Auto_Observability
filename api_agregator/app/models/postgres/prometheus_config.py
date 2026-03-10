@@ -1,3 +1,5 @@
+"""PrometheusConfig PostgreSQL model module."""
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -9,6 +11,12 @@ from app.db.postgres.database import Base
 
 
 class PrometheusConfig(Base):
+    """
+    Модель конфигурации Prometheus в базе данных.
+
+    Хранит информацию о конфигурациях Prometheus для контейнеров.
+    """
+
     __tablename__ = "prometheus_configs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -50,6 +58,12 @@ class PrometheusConfig(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Строковое представление конфигурации Prometheus.
+
+        Returns:
+            str: Строковое представление
+        """
         return (
             f"<PrometheusConfig(id={self.id}, container_id={self.container_id}, "
             f"stack={self.stack}, status={self.status})>"

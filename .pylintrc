@@ -1,0 +1,86 @@
+[MASTER]
+# Максимальная длина строки (по умолчанию 100)
+max-line-length=120
+
+# Игнорировать некоторые директории
+ignore=tests,venv,env,.venv
+
+# Минимальный порог оценки для успешного прохождения (по умолчанию 10)
+# Установим 5.0 для менее строгой проверки
+fail-under=5.0
+
+[MESSAGES CONTROL]
+# Отключаем некоторые строгие проверки
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    too-many-public-methods,
+    too-many-instance-attributes,
+    too-many-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-nested-blocks,
+    too-many-return-statements,
+    too-many-boolean-expressions,
+    import-error,
+    no-name-in-module,
+    wrong-import-position,
+    unused-import,
+    unused-argument,
+    unused-variable,
+    redefined-outer-name,
+    broad-exception-caught,
+    logging-fstring-interpolation,
+    line-too-long,
+    invalid-name,
+    raise-missing-from,
+    pointless-string-statement,
+    duplicate-code,
+    consider-using-f-string,
+    use-dict-literal,
+    unnecessary-comprehension
+
+[FORMAT]
+# Максимальная длина строки
+max-line-length=120
+
+# Максимальное количество символов в имени
+max-name-length=50
+
+[DESIGN]
+# Максимальное количество аргументов функции
+max-args=10
+
+# Максимальное количество атрибутов класса
+max-attributes=15
+
+# Максимальное количество локальных переменных
+max-locals=20
+
+# Максимальное количество веток
+max-branches=15
+
+# Максимальное количество операторов
+max-statements=60
+
+# Максимальное количество вложенных блоков
+max-nested-blocks=6
+
+[REFACTORING]
+# Максимальное количество возвращаемых значений
+max-returns=8
+
+# Максимальное количество булевых выражений
+max-bool-expr=6
+
+[VARIABLES]
+# Игнорируем переменные, которые используются только в except блоках
+dummy-variables-rgx=_^|^_|^dummy|^ignored|^unused
+
+[IMPORTS]
+# Игнорируем ошибки импорта для внешних модулей
+ignore-imports=yes
+

@@ -149,9 +149,33 @@
                 <span v-else class="text-gray">-</span>
               </td>
               <td>
-                <span v-if="data.has_prometheus_config" class="badge badge-success" title="Prometheus config generated">
-                  ✓ Config
-                </span>
+                <div v-if="data.prometheus_config" class="prometheus-info">
+                  <div class="prometheus-status-row">
+                    <span 
+                      :class="['badge', data.prometheus_config.status === 'active' ? 'badge-success' : 'badge-warning']"
+                      :title="`Config status: ${data.prometheus_config.status}`"
+                    >
+                      {{ data.prometheus_config.status === 'active' ? '✓ Config' : '⚠ Config' }}
+                    </span>
+                    <span 
+                      v-if="data.prometheus_config.exporter.exists"
+                      :class="['badge', data.prometheus_config.exporter.running ? 'badge-success' : 'badge-error']"
+                      :title="`Exporter ${data.prometheus_config.exporter.running ? 'running' : 'stopped'}`"
+                    >
+                      {{ data.prometheus_config.exporter.running ? '✓ Exporter' : '✗ Exporter' }}
+                    </span>
+                    <span 
+                      v-else
+                      class="badge badge-secondary"
+                      title="Exporter not found"
+                    >
+                      - Exporter
+                    </span>
+                  </div>
+                  <div v-if="data.prometheus_config.stack" class="prometheus-stack">
+                    <span class="text-xs text-gray">{{ data.prometheus_config.stack }}</span>
+                  </div>
+                </div>
                 <span v-else class="text-gray">-</span>
               </td>
               <td class="text-xs text-gray id-column-cell">{{ id.substring(0, 12) }}</td>
@@ -213,6 +237,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { containerApi, hostsApi, type ContainersResponse, type HostInfo } from '../services/api'
+import { showToast } from '../utils/toast'
 
 const router = useRouter()
 
@@ -296,7 +321,7 @@ const loadContainers = async () => {
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -318,7 +343,7 @@ const handleRefresh = async () => {
   } catch (error: any) {
     console.error('Failed to refresh containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to refresh containers'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     loading.value = false
   }
@@ -338,7 +363,7 @@ const handleStart = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to start container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to start container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -358,7 +383,7 @@ const handleStop = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to stop container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to stop container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -381,7 +406,7 @@ const handleRemove = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to remove container:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to remove container'
-    alert(errorMsg)
+    showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -455,7 +480,8 @@ const handleBulkStart = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkStop = async () => {
@@ -489,7 +515,8 @@ const handleBulkStop = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Stopped: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Stopped: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkRemove = async () => {
@@ -523,18 +550,19 @@ const handleBulkRemove = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Removed: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Removed: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 const handleBulkGenerateConfig = async () => {
   if (selectedContainers.value.size === 0) return
   
-  if (!confirm(`Generate Prometheus config for ${selectedContainers.value.size} container(s)?`)) {
+  if (!confirm(`Generate Prometheus config for ${selectedContainers.value.size} container(s)?\n\nNote: Exporters must be running for each container.`)) {
     return
   }
 
   bulkActionLoading.value = true
-  const results = { success: 0, failed: 0, errors: [] as string[] }
+  const results = { success: 0, failed: 0, errors: [] as string[], exporterErrors: [] as string[] }
 
   for (const id of selectedContainers.value) {
     try {
@@ -549,7 +577,16 @@ const handleBulkGenerateConfig = async () => {
       results.success++
     } catch (error: any) {
       results.failed++
-      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed'
+      const errorMsg = `${id}: ${errorDetail}`
+      results.errors.push(errorMsg)
+      
+      // Track exporter-specific errors separately
+      if (errorDetail.toLowerCase().includes('exporter') && 
+          (errorDetail.toLowerCase().includes('not found') || errorDetail.toLowerCase().includes('not running'))) {
+        const containerName = containers.value[id]?.info?.Name?.replace(/^\//, '') || id.substring(0, 12)
+        results.exporterErrors.push(containerName)
+      }
     }
   }
 
@@ -557,7 +594,17 @@ const handleBulkGenerateConfig = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Config generated: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  let message = `Config generated: ${results.success}, Failed: ${results.failed}`
+  
+  if (results.exporterErrors.length > 0) {
+    message += `\n\n${results.exporterErrors.length} container(s) need exporter started:\n${results.exporterErrors.slice(0, 5).join(', ')}${results.exporterErrors.length > 5 ? '...' : ''}`
+  }
+  
+  if (results.errors.length > 0 && results.exporterErrors.length === 0) {
+    message += `\n\nErrors:\n${results.errors.slice(0, 5).join('\n')}`
+  }
+  
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 8000)
 }
 
 const handleBulkStartExporter = async () => {
@@ -568,7 +615,7 @@ const handleBulkStartExporter = async () => {
   
   const exporterPort = parseInt(port)
   if (isNaN(exporterPort) || exporterPort < 1024 || exporterPort > 65535) {
-    alert('Invalid port number. Must be between 1024 and 65535.')
+    showToast('Invalid port number. Must be between 1024 and 65535.', 'error')
     return
   }
 
@@ -594,7 +641,8 @@ const handleBulkStartExporter = async () => {
   await loadContainers()
   clearSelection()
   
-  alert(`Exporter started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`)
+  const message = `Exporter started: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
 }
 
 watch(selectedHostId, () => {
@@ -798,5 +846,37 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.prometheus-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prometheus-status-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.prometheus-stack {
+  margin-top: 2px;
+}
+
+.badge-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.badge-warning {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.text-xs {
+  font-size: 11px;
 }
 </style>

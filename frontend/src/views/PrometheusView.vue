@@ -1,75 +1,247 @@
 <template>
   <div class="prometheus-view">
     <div class="header-section">
-      <h1 class="page-title">Prometheus Configs</h1>
-      <button @click="loadConfigs" class="btn btn-primary" :disabled="loading">
-        <span v-if="loading" class="loading"></span>
-        <span v-else>Refresh</span>
-      </button>
+      <div>
+        <h1 class="page-title">Prometheus Configs</h1>
+        <p class="page-subtitle" v-if="managerStatusText">
+          Prometheus status:
+          <span
+            class="badge"
+            :class="managerStatusBadgeClass"
+          >
+            {{ managerStatusText }}
+          </span>
+        </p>
+      </div>
+      <div class="header-actions">
+        <button @click="loadMainConfig" class="btn btn-primary" :disabled="loadingMainConfig">
+          <span v-if="loadingMainConfig" class="loading"></span>
+          <span v-else>Refresh Config</span>
+        </button>
+        <button @click="loadConfigs" class="btn btn-primary" :disabled="loading">
+          <span v-if="loading" class="loading"></span>
+          <span v-else>Refresh Services</span>
+        </button>
+      </div>
     </div>
 
-    <div v-if="loading && configs.length === 0" class="loading-state">
-      <div class="loading"></div>
-      <p>Loading configs...</p>
+    <div class="manager-panel">
+      <h2 class="panel-title">Prometheus Manager</h2>
+      <div class="manager-controls">
+        <button @click="refreshManagerStatus" class="btn btn-secondary" :disabled="loadingManager">
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Refresh Status</span>
+        </button>
+        <button
+          v-if="isManagerRunning"
+          @click="stopManager"
+          class="btn btn-danger"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Stop Prometheus</span>
+        </button>
+        <button
+          v-else
+          @click="startManager"
+          class="btn btn-success"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Start Prometheus</span>
+        </button>
+        <button @click="updateManagerConfig" class="btn btn-secondary" :disabled="updatingConfig">
+          <span v-if="updatingConfig" class="loading"></span>
+          <span v-else>Update Config Files</span>
+        </button>
+      </div>
     </div>
 
-    <div v-else-if="configs.length === 0" class="empty-state">
-      <p>No Prometheus configs found</p>
-    </div>
+    <div class="content-layout">
+      <!-- Left Column: Main Config -->
+      <div class="left-column">
+        <div class="config-panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Main Prometheus Config</h2>
+            <button @click="loadMainConfig" class="btn btn-sm btn-secondary" :disabled="loadingMainConfig">
+              <span v-if="loadingMainConfig" class="loading"></span>
+              <span v-else>↻</span>
+            </button>
+          </div>
 
-    <div v-else class="table-container">
-      <table class="config-table">
-        <thead>
-          <tr>
-            <th>Container Name</th>
-            <th>Stack</th>
-            <th>Job Name</th>
-            <th>Host</th>
-            <th>Exporter Status</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="config in configs" :key="config.config_id">
-            <td>{{ config.container_name }}</td>
-            <td>
-              <span class="badge badge-info">{{ config.stack }}</span>
-            </td>
-            <td class="job-name">{{ config.job_name }}</td>
-            <td>{{ getHostName(config.host_name) }}</td>
-            <td>
-              <span 
-                v-if="config.exporter.running" 
-                class="badge badge-success"
-                title="Exporter is running"
-              >
-                Running
-              </span>
-              <span 
-                v-else 
-                class="badge badge-secondary"
-                title="Exporter is not running"
-              >
-                Stopped
-              </span>
-            </td>
-            <td class="text-xs text-gray">
-              {{ formatDate(config.created_at) }}
-            </td>
-            <td>
-              <button 
-                @click="viewConfigFiles(config.config_id)" 
-                class="btn btn-sm btn-primary"
-                :disabled="loadingFiles === config.config_id"
-              >
-                <span v-if="loadingFiles === config.config_id" class="loading"></span>
-                <span v-else>View Files</span>
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          <div v-if="loadingMainConfig && !mainConfig" class="loading-state">
+            <div class="loading"></div>
+            <p>Loading main config...</p>
+          </div>
+
+          <div v-else-if="!mainConfig || !mainConfig.main_config" class="empty-state">
+            <p>Main config not initialized</p>
+          </div>
+
+          <div v-else class="config-tree">
+            <!-- Main Config Section -->
+            <div class="tree-section">
+              <div class="tree-header" @click="toggleSection('main')">
+                <span class="tree-icon">{{ expandedSections.main ? '▼' : '▶' }}</span>
+                <span class="tree-title">Main Config (prometheus.yml)</span>
+              </div>
+              <div v-if="expandedSections.main" class="tree-content">
+                <div v-if="mainConfig.main_config.global" class="config-item">
+                  <div class="config-key">global:</div>
+                  <div class="config-value">
+                    <CodeBlock :code="formatYaml(mainConfig.main_config.global)" :read-only="true" />
+                  </div>
+                </div>
+                <div class="config-item">
+                  <div class="config-key">scrape_configs:</div>
+                  <div class="config-value">
+                    <div v-for="(scrapeConfig, index) in mainConfig.main_config.scrape_configs" :key="index" class="scrape-config-item">
+                      <div class="scrape-config-header" @click="toggleScrapeConfig(index)">
+                        <span class="tree-icon">{{ expandedScrapeConfigs[index] ? '▼' : '▶' }}</span>
+                        <span class="scrape-config-name">{{ scrapeConfig.job_name }}</span>
+                      </div>
+                      <div v-if="expandedScrapeConfigs[index]" class="scrape-config-content">
+                        <CodeBlock :code="formatYaml(scrapeConfig)" :read-only="true" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Targets Files Section -->
+            <div class="tree-section">
+              <div class="tree-header" @click="toggleSection('targets')">
+                <span class="tree-icon">{{ expandedSections.targets ? '▼' : '▶' }}</span>
+                <span class="tree-title">Targets Files</span>
+              </div>
+              <div v-if="expandedSections.targets" class="tree-content">
+                <div v-if="Object.keys(mainConfig.targets).length === 0" class="empty-state-small">
+                  <p>No target files</p>
+                </div>
+                <div v-for="(targetContent, fileName) in mainConfig.targets" :key="fileName" class="target-file-item">
+                  <div class="target-file-header" @click="toggleTargetFile(fileName)">
+                    <span class="tree-icon">{{ expandedTargetFiles[fileName] ? '▼' : '▶' }}</span>
+                    <span class="target-file-name">{{ fileName }}</span>
+                  </div>
+                  <div v-if="expandedTargetFiles[fileName]" class="target-file-content">
+                    <CodeBlock :code="formatYaml(targetContent)" :read-only="true" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Services Table -->
+      <div class="right-column">
+        <div class="table-panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Services</h2>
+          </div>
+
+          <div v-if="loading && configs.length === 0" class="loading-state">
+            <div class="loading"></div>
+            <p>Loading services...</p>
+          </div>
+
+          <div v-else-if="configs.length === 0" class="empty-state">
+            <p>No Prometheus configs found</p>
+          </div>
+
+          <div v-else class="table-container">
+            <table class="config-table">
+              <thead>
+                <tr>
+                  <th>Container Name</th>
+                  <th>Stack</th>
+                  <th>Job Name</th>
+                  <th>Host</th>
+                  <th>In Main Config</th>
+                  <th>Exporter Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="config in configs" :key="config.config_id">
+                  <td>{{ config.container_name }}</td>
+                  <td>
+                    <span class="badge badge-info">{{ config.stack }}</span>
+                  </td>
+                  <td class="job-name">{{ config.job_name }}</td>
+                  <td>{{ getHostName(config.host_name) }}</td>
+                  <td>
+                    <span 
+                      v-if="isInMainConfig(config.job_name)" 
+                      class="badge badge-success"
+                      title="Service is in main config"
+                    >
+                      ✓
+                    </span>
+                    <span 
+                      v-else 
+                      class="badge badge-secondary"
+                      title="Service is not in main config"
+                    >
+                      ✗
+                    </span>
+                  </td>
+                  <td>
+                    <span 
+                      v-if="config.exporter.running" 
+                      class="badge badge-success"
+                      title="Exporter is running"
+                    >
+                      Running
+                    </span>
+                    <span 
+                      v-else 
+                      class="badge badge-secondary"
+                      title="Exporter is not running"
+                    >
+                      Stopped
+                    </span>
+                  </td>
+                  <td>
+                    <div class="action-buttons">
+                      <button 
+                        v-if="!isInMainConfig(config.job_name)"
+                        @click="addToMainConfig(config)" 
+                        class="btn btn-sm btn-success"
+                        :disabled="loadingActions[config.config_id]"
+                        :title="config.exporter.running ? 'Add to main config' : 'Warning: Exporter may not be running. Click to try anyway.'"
+                      >
+                        <span v-if="loadingActions[config.config_id]" class="loading"></span>
+                        <span v-else>Add</span>
+                      </button>
+                      <button 
+                        v-else
+                        @click="removeFromMainConfig(config)" 
+                        class="btn btn-sm btn-danger"
+                        :disabled="loadingActions[config.config_id]"
+                        title="Remove from main config"
+                      >
+                        <span v-if="loadingActions[config.config_id]" class="loading"></span>
+                        <span v-else>Remove</span>
+                      </button>
+                      <button 
+                        @click="viewConfigFiles(config.config_id)" 
+                        class="btn btn-sm btn-primary"
+                        :disabled="loadingFiles === config.config_id"
+                        title="View config files"
+                      >
+                        <span v-if="loadingFiles === config.config_id" class="loading"></span>
+                        <span v-else>Files</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Modal for viewing config files -->
@@ -92,7 +264,7 @@
             class="file-section"
           >
             <h4 class="file-name">{{ fileName }}</h4>
-            <pre class="yaml-content"><code>{{ formatYaml(content) }}</code></pre>
+            <CodeBlock :code="formatYaml(content)" :read-only="true" />
           </div>
         </div>
 
@@ -105,20 +277,75 @@
         </div>
       </div>
     </div>
+
+    <!-- Confirm Dialog -->
+    <ConfirmDialog
+      v-if="confirmDialogOptions"
+      :visible="showConfirmDialog"
+      :title="confirmDialogOptions.title"
+      :message="confirmDialogOptions.message"
+      :details="confirmDialogOptions.details"
+      :confirm-text="confirmDialogOptions.confirmText"
+      :cancel-text="confirmDialogOptions.cancelText"
+      :type="confirmDialogOptions.type"
+      @confirm="handleConfirmDialogConfirm"
+      @cancel="handleConfirmDialogCancel"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import yaml from 'js-yaml'
-import { prometheusApi, hostsApi, type PrometheusConfigInfo, type PrometheusConfigFiles, type HostInfo } from '../services/api'
+import CodeBlock from '../components/CodeBlock.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { showToast } from '../utils/toast'
+import { 
+  prometheusApi, 
+  hostsApi, 
+  type PrometheusConfigInfo, 
+  type PrometheusConfigFiles, 
+  type HostInfo,
+  type MainPrometheusConfig,
+  type AddServiceRequest
+} from '../services/api'
 
 const configs = ref<PrometheusConfigInfo[]>([])
 const hosts = ref<HostInfo[]>([])
+const mainConfig = ref<MainPrometheusConfig | null>(null)
 const loading = ref(false)
+const loadingMainConfig = ref(false)
 const loadingFiles = ref<number | null>(null)
+const loadingActions = ref<Record<number, boolean>>({})
 const showModal = ref(false)
 const configFiles = ref<PrometheusConfigFiles | null>(null)
+const loadingManager = ref(false)
+const updatingConfig = ref(false)
+const managerStatus = ref<any | null>(null)
+
+// Confirm dialog state
+const showConfirmDialog = ref(false)
+const confirmDialogOptions = ref<{
+  title: string
+  message: string
+  details?: string
+  confirmText: string
+  cancelText: string
+  type: 'warning' | 'danger' | 'info'
+  onConfirm: () => void
+} | null>(null)
+
+// Expanded sections state
+const expandedSections = ref({
+  main: true,
+  targets: true
+})
+
+const expandedScrapeConfigs = ref<Record<number, boolean>>({})
+const expandedTargetFiles = ref<Record<string, boolean>>({})
+
+// Set of job names in main config
+const mainConfigJobNames = ref<Set<string>>(new Set())
 
 // Создаем маппинг host_id -> host_name
 const hostNameMap = computed(() => {
@@ -133,6 +360,108 @@ const hostNameMap = computed(() => {
 const getHostName = (hostId: string): string => {
   return hostNameMap.value.get(hostId) || hostId
 }
+
+// Check if service is in main config
+const isInMainConfig = (jobName: string): boolean => {
+  return mainConfigJobNames.value.has(jobName)
+}
+
+// Update main config job names set
+const updateMainConfigJobNames = () => {
+  if (!mainConfig.value?.main_config?.scrape_configs) {
+    mainConfigJobNames.value.clear()
+    return
+  }
+  mainConfigJobNames.value = new Set(
+    mainConfig.value.main_config.scrape_configs.map(sc => sc.job_name)
+  )
+}
+
+const refreshManagerStatus = async () => {
+  try {
+    loadingManager.value = true
+    managerStatus.value = await prometheusApi.getManagerStatus()
+  } catch (error: any) {
+    console.error('Failed to load Prometheus status:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to load Prometheus status', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const startManager = async () => {
+  try {
+    loadingManager.value = true
+    const result = await prometheusApi.startManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Prometheus started', 'success')
+  } catch (error: any) {
+    console.error('Failed to start Prometheus:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to start Prometheus', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const stopManager = async () => {
+  try {
+    loadingManager.value = true
+    const result = await prometheusApi.stopManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Prometheus stopped', 'success')
+  } catch (error: any) {
+    console.error('Failed to stop Prometheus:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to stop Prometheus', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const updateManagerConfig = async () => {
+  try {
+    updatingConfig.value = true
+    const result = await prometheusApi.updateManagerConfig()
+    showToast(result?.message || 'Config files updated', 'success')
+    await loadMainConfig()
+  } catch (error: any) {
+    console.error('Failed to update config files:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to update config files', 'error')
+  } finally {
+    updatingConfig.value = false
+  }
+}
+
+const managerStatusText = computed(() => {
+  if (!managerStatus.value) return ''
+  if (typeof managerStatus.value === 'string') return managerStatus.value
+  if (managerStatus.value.status) {
+    if (typeof managerStatus.value.status === 'string') return managerStatus.value.status
+    if (managerStatus.value.status.status) return managerStatus.value.status.status
+  }
+  try {
+    return JSON.stringify(managerStatus.value)
+  } catch {
+    return String(managerStatus.value)
+  }
+})
+
+const isManagerRunning = computed(() => {
+  const text = managerStatusText.value.toLowerCase()
+  if (!text) return false
+  return text.includes('running') || text.includes('up')
+})
+
+const managerStatusBadgeClass = computed(() => {
+  const text = managerStatusText.value.toLowerCase()
+  if (!text) return 'badge-secondary'
+  if (text.includes('running') || text.includes('up')) {
+    return 'badge-success'
+  }
+  if (text.includes('not found') || text.includes('down') || text.includes('stopped')) {
+    return 'badge-danger'
+  }
+  return 'badge-secondary'
+})
 
 const loadHosts = async () => {
   try {
@@ -149,9 +478,206 @@ const loadConfigs = async () => {
     configs.value = response.configs
   } catch (error: any) {
     console.error('Failed to load configs:', error)
-    alert(error.response?.data?.detail || error.message || 'Failed to load configs')
+    showToast(error.response?.data?.detail || error.message || 'Failed to load configs', 'error')
   } finally {
     loading.value = false
+  }
+}
+
+const loadMainConfig = async () => {
+  loadingMainConfig.value = true
+  try {
+    const response = await prometheusApi.getMainConfig()
+    mainConfig.value = response
+    updateMainConfigJobNames()
+  } catch (error: any) {
+    console.error('Failed to load main config:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to load main config', 'error')
+  } finally {
+    loadingMainConfig.value = false
+  }
+}
+
+const addToMainConfig = async (config: PrometheusConfigInfo) => {
+  // Показываем предупреждение, если экспортер не запущен
+  if (!config.exporter.running) {
+    confirmDialogOptions.value = {
+      title: 'Warning: Exporter Not Running',
+      message: `Exporter for "${config.container_name}" appears to be not running.`,
+      details: 'Do you want to continue adding this service to the main Prometheus config anyway? The exporter should be running for Prometheus to scrape metrics.',
+      confirmText: 'Continue Anyway',
+      cancelText: 'Cancel',
+      type: 'warning',
+      onConfirm: () => {
+        showConfirmDialog.value = false
+        performAddToMainConfig(config)
+      }
+    }
+    showConfirmDialog.value = true
+    return
+  }
+  
+  performAddToMainConfig(config)
+}
+
+const performAddToMainConfig = async (config: PrometheusConfigInfo) => {
+  loadingActions.value[config.config_id] = true
+  try {
+    // Извлекаем данные из конфига
+    const metadata = config.config_metadata || {}
+    const info = metadata.info || {}
+    
+    const jobName = info.job_name || config.job_name
+    const targetAddress = info.target_address || config.target_address
+    const exporterPort = info.exporter_port || config.exporter_port
+
+    // Валидация обязательных полей
+    if (!jobName) {
+      throw new Error('Job name is missing')
+    }
+    if (!targetAddress) {
+      throw new Error('Target address is missing')
+    }
+    if (!exporterPort) {
+      throw new Error('Exporter port is missing')
+    }
+
+    console.log('Adding service to main config:', {
+      jobName,
+      targetAddress,
+      exporterPort,
+      configId: config.config_id
+    })
+
+    const scrapeConfig: AddServiceRequest = {
+      scrape_config: {
+        scrape_configs: [{
+          job_name: jobName,
+          scrape_interval: '15s',
+          scrape_timeout: '10s',
+          file_sd_configs: [{
+            files: [`targets/${jobName}.yml`]
+          }]
+        }]
+      },
+      target: [{
+        targets: [`${targetAddress}:${exporterPort}`],
+        labels: {}
+      }],
+      target_name: `${jobName}.yml`
+    }
+
+    console.log('Sending request:', JSON.stringify(scrapeConfig, null, 2))
+
+    await prometheusApi.addServiceToMainConfig(scrapeConfig)
+    await loadMainConfig()
+    showToast('Service added to main config successfully', 'success')
+  } catch (error: any) {
+    console.error('Failed to add service to main config:', error)
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response,
+      request: error.config
+    })
+    
+    // Обработка network errors
+    if (error.code === 'ERR_NETWORK' || 
+        error.message?.includes('Network Error') || 
+        error.message?.includes('network') ||
+        !error.response) {
+      showToast(
+        'Network error: Could not connect to the server. Please check your connection and try again.',
+        'error',
+        6000
+      )
+      return
+    }
+    
+    // Обработка ошибок от сервера
+    let errorDetail = 'Failed to add service to main config'
+    
+    if (error.response) {
+      const status = error.response.status
+      
+      if (error.response.data) {
+        if (typeof error.response.data === 'string') {
+          errorDetail = error.response.data
+        } else if (error.response.data.detail) {
+          errorDetail = error.response.data.detail
+        } else if (error.response.data.message) {
+          errorDetail = error.response.data.message
+        }
+      }
+      
+      // Специфичные сообщения для разных статусов
+      if (status === 503) {
+        if (errorDetail.includes('PROMETHEUS_GENERATION_URL')) {
+          errorDetail = 'Prometheus Generation service URL is not configured. Please check server configuration.'
+        } else if (errorDetail.includes('Cannot connect')) {
+          errorDetail = 'Cannot connect to Prometheus Generation service. Please check if the service is running.'
+        } else {
+          errorDetail = 'Service unavailable. Please check if Prometheus Generation service is running.'
+        }
+      } else if (status === 504) {
+        errorDetail = 'Request timeout. The Prometheus Generation service took too long to respond.'
+      } else if (status === 500) {
+        if (!errorDetail || errorDetail === 'Failed to add service to main config') {
+          errorDetail = 'Internal server error. Please check server logs for details.'
+        }
+      }
+    } else if (error.message) {
+      errorDetail = error.message
+    }
+    
+    // Показываем понятное сообщение об ошибке
+    if (errorDetail.toLowerCase().includes('exporter') && 
+        (errorDetail.toLowerCase().includes('not found') || errorDetail.toLowerCase().includes('not running'))) {
+      showToast(
+        `Cannot add service: ${errorDetail}. Please start the exporter first.`,
+        'error',
+        6000
+      )
+    } else {
+      showToast(errorDetail, 'error', 5000)
+    }
+  } finally {
+    loadingActions.value[config.config_id] = false
+  }
+}
+
+const handleConfirmDialogConfirm = () => {
+  if (confirmDialogOptions.value?.onConfirm) {
+    confirmDialogOptions.value.onConfirm()
+  }
+  showConfirmDialog.value = false
+  confirmDialogOptions.value = null
+}
+
+const handleConfirmDialogCancel = () => {
+  showConfirmDialog.value = false
+  confirmDialogOptions.value = null
+}
+
+const removeFromMainConfig = async (config: PrometheusConfigInfo) => {
+  loadingActions.value[config.config_id] = true
+  try {
+    const metadata = config.config_metadata || {}
+    const info = metadata.info || {}
+    
+    const jobName = info.job_name || config.job_name
+
+    await prometheusApi.removeServiceFromMainConfig({
+      job_name: jobName,
+      target_name: `${jobName}.yml`
+    })
+    await loadMainConfig()
+    showToast('Service removed from main config successfully', 'success')
+  } catch (error: any) {
+    console.error('Failed to remove service from main config:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to remove service from main config', 'error')
+  } finally {
+    loadingActions.value[config.config_id] = false
   }
 }
 
@@ -165,7 +691,7 @@ const viewConfigFiles = async (configId: number) => {
     configFiles.value = files
   } catch (error: any) {
     console.error('Failed to load config files:', error)
-    alert(error.response?.data?.detail || error.message || 'Failed to load config files')
+    showToast(error.response?.data?.detail || error.message || 'Failed to load config files', 'error')
     showModal.value = false
   } finally {
     loadingFiles.value = null
@@ -175,6 +701,18 @@ const viewConfigFiles = async (configId: number) => {
 const closeModal = () => {
   showModal.value = false
   configFiles.value = null
+}
+
+const toggleSection = (section: 'main' | 'targets') => {
+  expandedSections.value[section] = !expandedSections.value[section]
+}
+
+const toggleScrapeConfig = (index: number) => {
+  expandedScrapeConfigs.value[index] = !expandedScrapeConfigs.value[index]
+}
+
+const toggleTargetFile = (fileName: string) => {
+  expandedTargetFiles.value[fileName] = !expandedTargetFiles.value[fileName]
 }
 
 const formatDate = (dateString: string | null) => {
@@ -190,9 +728,7 @@ const formatDate = (dateString: string | null) => {
 const formatYaml = (content: any): string => {
   if (!content) return ''
   if (typeof content === 'string') {
-    // Если это уже строка, проверяем, не является ли она YAML
     try {
-      // Пытаемся распарсить как YAML и переформатировать
       const parsed = yaml.load(content)
       return yaml.dump(parsed, { 
         indent: 2,
@@ -201,12 +737,10 @@ const formatYaml = (content: any): string => {
         sortKeys: false
       })
     } catch {
-      // Если не YAML, возвращаем как есть
       return content
     }
   }
   
-  // Конвертируем объект в YAML
   try {
     return yaml.dump(content, { 
       indent: 2,
@@ -215,7 +749,6 @@ const formatYaml = (content: any): string => {
       sortKeys: false
     })
   } catch (error) {
-    // Fallback на JSON если не получилось
     try {
       return JSON.stringify(content, null, 2)
     } catch {
@@ -227,13 +760,15 @@ const formatYaml = (content: any): string => {
 onMounted(() => {
   loadHosts()
   loadConfigs()
+  loadMainConfig()
+  refreshManagerStatus()
 })
 </script>
 
 <style scoped>
 .prometheus-view {
   padding: 20px;
-  max-width: 1400px;
+  max-width: 1800px;
   margin: 0 auto;
 }
 
@@ -244,9 +779,88 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
+.page-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.status-text {
+  font-weight: 500;
+}
+
+.manager-panel {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manager-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .page-title {
   font-size: 24px;
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.content-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .content-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.left-column,
+.right-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.config-panel,
+.table-panel {
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 150px);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.panel-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
   color: var(--text-primary);
 }
 
@@ -257,11 +871,114 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-.table-container {
-  background: var(--bg-card);
-  border-radius: 8px;
+.empty-state-small {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.config-tree {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tree-section {
+  margin-bottom: 16px;
+}
+
+.tree-section:last-child {
+  margin-bottom: 0;
+}
+
+.tree-header,
+.scrape-config-header,
+.target-file-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.tree-header:hover,
+.scrape-config-header:hover,
+.target-file-header:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.tree-icon {
+  margin-right: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 16px;
+  display: inline-block;
+}
+
+.tree-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tree-content {
+  padding: 12px 0 0 20px;
+}
+
+.config-item {
+  margin-bottom: 16px;
+}
+
+.config-key {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.config-value {
+  margin-left: 16px;
+}
+
+.scrape-config-item,
+.target-file-item {
+  margin-bottom: 12px;
+}
+
+.scrape-config-name,
+.target-file-name {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.scrape-config-content,
+.target-file-content {
+  padding: 8px 0 0 24px;
+}
+
+.yaml-content {
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  overflow: hidden;
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.yaml-content code {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre;
+}
+
+.table-container {
+  overflow-x: auto;
+  flex: 1;
 }
 
 .config-table {
@@ -271,6 +988,9 @@ onMounted(() => {
 
 .config-table thead {
   background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .config-table th {
@@ -280,6 +1000,7 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .config-table td {
@@ -326,6 +1047,91 @@ onMounted(() => {
 .badge-info {
   background: var(--info-bg, #d1ecf1);
   color: var(--info-text, #0c5460);
+}
+
+.badge-danger {
+  background: var(--danger-bg, #f8d7da);
+  color: var(--danger-text, #721c24);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-secondary);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--primary-color, #007bff);
+  color: white;
+  border-color: var(--primary-color, #007bff);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover, #0056b3);
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.btn-success {
+  background: var(--success-bg, #28a745);
+  color: white;
+  border-color: var(--success-bg, #28a745);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: var(--success-hover, #218838);
+}
+
+.btn-danger {
+  background: var(--danger-bg, #dc3545);
+  color: white;
+  border-color: var(--danger-bg, #dc3545);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover, #c82333);
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.loading {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .modal-backdrop {
@@ -411,23 +1217,6 @@ onMounted(() => {
   border-bottom: 1px solid var(--border);
 }
 
-.yaml-content {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 16px;
-  overflow-x: auto;
-  margin: 0;
-}
-
-.yaml-content code {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  white-space: pre;
-}
-
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -436,4 +1225,3 @@ onMounted(() => {
   border-top: 1px solid var(--border);
 }
 </style>
-

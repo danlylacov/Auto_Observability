@@ -1,5 +1,6 @@
+"""Container PostgreSQL model module."""
+
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Column, String, DateTime, JSON, Index
 from sqlalchemy.orm import relationship
@@ -8,6 +9,12 @@ from app.db.postgres.database import Base
 
 
 class Container(Base):
+    """
+    Модель контейнера в базе данных.
+
+    Хранит информацию о Docker контейнерах и их классификацию.
+    """
+
     __tablename__ = "containers"
 
     id = Column(String(255), primary_key=True)
@@ -38,4 +45,10 @@ class Container(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Строковое представление контейнера.
+
+        Returns:
+            str: Строковое представление
+        """
         return f"<Container(id={self.id}, name={self.name}, stack={self.stack})>"

@@ -1,6 +1,5 @@
-# app/db/postgres/__init__.py
 """PostgreSQL database connection module."""
 
-from app.db.postgres.database import get_db, engine, Base
+from app.db.postgres.database import Base, engine, get_db
 
 __all__ = ["get_db", "engine", "Base"]

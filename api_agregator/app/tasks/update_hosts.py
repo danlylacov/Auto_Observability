@@ -6,7 +6,12 @@ from app.db.postgres.database import SessionLocal
 
 @celery_app.task(name='app.tasks.update_hosts')
 def update_hosts():
-    """Задача Celery для обновления хостов"""
+    """
+    Задача Celery для обновления хостов.
+
+    Проверяет работоспособность всех хостов и сохраняет
+    информацию о них в Redis.
+    """
     db = SessionLocal()
     try:
         hosts_service = HostsService(db)

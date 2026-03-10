@@ -1,6 +1,7 @@
 import logging
-from typing import Optional
+
 from fastapi import APIRouter, status, HTTPException
+
 from app.services.docker_manager import DockerManager
 
 router = APIRouter()
@@ -8,11 +9,26 @@ logger = logging.getLogger(__name__)
 
 
 def get_docker_manager() -> DockerManager:
+    """
+    Получение экземпляра DockerManager.
+
+    Returns:
+        DockerManager: Экземпляр менеджера Docker
+    """
     return DockerManager()
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def get_containers():
+    """
+    Получение списка всех контейнеров.
+
+    Returns:
+        dict: Словарь с контейнерами и метаданными
+
+    Raises:
+        HTTPException: При ошибках подключения к Docker или других ошибках
+    """
     try:
         docker_manager = get_docker_manager()
 
