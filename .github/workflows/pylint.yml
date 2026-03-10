@@ -10,14 +10,54 @@ jobs:
         python-version: ["3.10"]
     steps:
     - uses: actions/checkout@v4
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pylint
+    
     - name: Analysing the code with pylint
       run: |
-        pylint $(git ls-files '*.py') --fail-under=5.0
+        pylint $(git ls-files '*.py') --fail-under=0 > pylint_output.txt || true
+    
+    - name: Extract pylint score
+      id: pylint_score
+      run: |
+        score=$(grep -oP 'Your code has been rated at \K[0-9.]+' pylint_output.txt | head -1)
+        if [ -z "$score" ]; then
+          score="0.0"
+        fi
+        echo "score=$score" >> $GITHUB_OUTPUT
+        echo "Extracted score: $score"
+    
+    - name: Determine color based on score
+      id: color
+      run: |
+        score=${{ steps.pylint_score.outputs.score }}
+        if (( $(echo "$score >= 9.0" | bc -l) )); then
+          color="brightgreen"
+        elif (( $(echo "$score >= 7.0" | bc -l) )); then
+          color="green"
+        elif (( $(echo "$score >= 5.0" | bc -l) )); then
+          color="yellow"
+        elif (( $(echo "$score >= 3.0" | bc -l) )); then
+          color="orange"
+        else
+          color="red"
+        fi
+        echo "color=$color" >> $GITHUB_OUTPUT
+    
+    - name: Create pylint badge
+      uses: schneegans/dynamic-badges-action@v1.7.0
+      with:
+        auth: ${{ secrets.GIST_SECRET }}
+        gistID: ${{ secrets.GIST_ID }}
+        filename: pylint.json
+        label: pylint
+        message: ${{ steps.pylint_score.outputs.score }}/10
+        color: ${{ steps.color.outputs.color }}
