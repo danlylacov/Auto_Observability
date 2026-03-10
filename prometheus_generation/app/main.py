@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from app.routers import generate, signature, main_config
+
+from app.routers import generate, main_config, signature
 
 app = FastAPI(
     title="Prometheus Generation API",
@@ -14,6 +15,12 @@ app.include_router(main_config.router, prefix="/api/v1/main-config", tags=["main
 
 @app.get("/")
 async def root():
+    """
+    Корневой эндпоинт API.
+
+    Returns:
+        dict: Информация об API
+    """
     return {
         "message": "Prometheus Generation API",
         "docs": "/docs",
@@ -23,4 +30,10 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    """
+    Проверка здоровья API.
+
+    Returns:
+        dict: Статус здоровья
+    """
     return {"status": "healthy"}

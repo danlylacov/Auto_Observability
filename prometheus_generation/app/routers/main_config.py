@@ -1,7 +1,9 @@
 from typing import Dict
+
 from fastapi import APIRouter, status, HTTPException
-from app.services.main_config import MainPrometheusConfig
+
 from app.models.main_config import AddServiceRequest, RemoveServiceRequest
+from app.services.main_config import MainPrometheusConfig
 
 router = APIRouter()
 
@@ -9,7 +11,16 @@ router = APIRouter()
 @router.post("/add", status_code=status.HTTP_200_OK)
 async def add_service(request: AddServiceRequest) -> Dict[str, str]:
     """
-    Добавляет сервис в основной конфиг Prometheus
+    Добавляет сервис в основной конфиг Prometheus.
+
+    Args:
+        request: Запрос с данными о сервисе для добавления
+
+    Returns:
+        Dict[str, str]: Результат добавления сервиса
+
+    Raises:
+        HTTPException: При ошибке добавления сервиса
     """
     try:
         config = MainPrometheusConfig()
@@ -36,7 +47,16 @@ async def add_service(request: AddServiceRequest) -> Dict[str, str]:
 @router.delete("/remove", status_code=status.HTTP_200_OK)
 async def remove_service(request: RemoveServiceRequest) -> Dict[str, str]:
     """
-    Удаляет сервис из основного конфига Prometheus
+    Удаляет сервис из основного конфига Prometheus.
+
+    Args:
+        request: Запрос с данными о сервисе для удаления
+
+    Returns:
+        Dict[str, str]: Результат удаления сервиса
+
+    Raises:
+        HTTPException: При ошибке удаления сервиса
     """
     try:
         config = MainPrometheusConfig()
@@ -62,7 +82,13 @@ async def remove_service(request: RemoveServiceRequest) -> Dict[str, str]:
 @router.get("/", status_code=status.HTTP_200_OK)
 async def get_full_config() -> Dict:
     """
-    Получает полный конфиг Prometheus и все файлы targets
+    Получает полный конфиг Prometheus и все файлы targets.
+
+    Returns:
+        Dict: Полный конфиг Prometheus с targets
+
+    Raises:
+        HTTPException: При ошибке получения конфига
     """
     try:
         config = MainPrometheusConfig()

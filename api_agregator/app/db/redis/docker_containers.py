@@ -1,32 +1,52 @@
+"""Docker containers Redis storage module."""
+
 import json
+import logging
 
 from app.db.redis.redis_connection import RedisConnection
+
+logger = logging.getLogger(__name__)
 
 
 class DockerContainers(RedisConnection):
     """
-    Класс для управления информацией о DockerContainers в Redis
+    Класс для управления информацией о Docker контейнерах в Redis.
+
+    Предоставляет методы для загрузки, получения и удаления данных о контейнерах.
     """
 
     def __init__(self) -> None:
+        """
+        Инициализация класса DockerContainers.
+
+        Создает подключение к Redis.
+        """
         super().__init__()
         self.client = self.connect()
 
     def upload_containers(self, containers: dict, host_name: str) -> None:
         """
-        Загрузка нескольких контейнеров
+        Загрузка нескольких контейнеров в Redis.
+
+        Args:
+            containers: Словарь с данными о контейнерах (id -> data)
+            host_name: Имя хоста, к которому относятся контейнеры
         """
         pipe = self.client.pipeline()
-        for id, data in containers.items():
-            # гарантируем, что в данных есть информация о хосте
+        for container_id, data in containers.items():
             if isinstance(data, dict):
                 data.setdefault("host_name", host_name)
-            pipe.set(f"container:{host_name}:{id}", json.dumps(data))
+            pipe.set(f"container:{host_name}:{container_id}", json.dumps(data))
         pipe.execute()
 
     def upload_container(self, container_id: str, container_data: dict, host_name: str) -> None:
         """
-        Зашрузка одного контейнера
+        Загрузка одного контейнера в Redis.
+
+        Args:
+            container_id: Идентификатор контейнера
+            container_data: Данные о контейнере
+            host_name: Имя хоста, к которому относится контейнер
         """
         if isinstance(container_data, dict):
             container_data.setdefault("host_name", host_name)
@@ -34,7 +54,13 @@ class DockerContainers(RedisConnection):
 
     def get_containers(self, host_name: str | None = None) -> dict:
         """
-        Получает все контейнеры
+        Получает все контейнеры из Redis.
+
+        Args:
+            host_name: Имя хоста для фильтрации. Если None, возвращает все контейнеры.
+
+        Returns:
+            dict: Словарь с данными о контейнерах (container_id -> data)
         """
         pattern = f"container:{host_name}:*" if host_name else "container:*"
         container_keys = self.client.keys(pattern)
@@ -53,28 +79,27 @@ class DockerContainers(RedisConnection):
             if not value:
                 continue
 
-            # ключ формата container:{host_name}:{container_id}
             key_str = key.decode("utf-8") if isinstance(key, bytes) else key
             _, key_host_name, container_id = key_str.split(":", 2)
 
             data = json.loads(value)
 
-            # дописываем host_name, если его не было в payload
             if isinstance(data, dict):
                 data.setdefault("host_name", key_host_name)
 
-            # Если запрошен конкретный хост, то просто мапа id -> data
-            if host_name:
-                containers[container_id] = data
-            else:
-                # При отсутствии host_name агрегируем по всем хостам.
-                # Для фронта по-прежнему удобно иметь плоскую структуру id -> data.
-                containers[container_id] = data
+            containers[container_id] = data
         return containers
 
     def get_container(self, container_id: str, host_id: str) -> dict:
         """
         Возвращает один контейнер по id и имени хоста.
+
+        Args:
+            container_id: Идентификатор контейнера
+            host_id: Идентификатор хоста
+
+        Returns:
+            dict: Данные о контейнере или пустой словарь, если не найден
         """
         key = f"container:{host_id}:{container_id}"
         value = self.client.get(key)
@@ -87,13 +112,18 @@ class DockerContainers(RedisConnection):
 
     def delete_all_containers_by_host(self, host_name: str = None) -> int:
         """
-        Удаляет все ключи с префиксом 'container:'
-        Возвращает количество удаленных ключей
+        Удаляет все ключи с префиксом 'container:' из Redis.
+
+        Args:
+            host_name: Имя хоста для фильтрации. Если None, удаляет все контейнеры.
+
+        Returns:
+            int: Количество удаленных ключей
         """
         pattern = f"container:{host_name}:*" if host_name else "container:*"
         container_keys = self.client.keys(pattern)
         if not container_keys:
-            print("Контейнеры не найдены")
+            logger.debug("Контейнеры не найдены")
             return 0
         deleted_count = self.client.delete(*container_keys)
         return deleted_count

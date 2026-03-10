@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from app.routes import manage
 
 app = FastAPI(
@@ -10,9 +11,14 @@ app = FastAPI(
 app.include_router(manage.router, prefix="/api/v1/manage", tags=["manage"])
 
 
-
 @app.get("/")
 async def root():
+    """
+    Корневой эндпоинт API.
+
+    Returns:
+        dict: Информация об API
+    """
     return {
         "message": "Prometheus manage API",
         "docs": "/docs",
@@ -22,4 +28,10 @@ async def root():
 
 @app.get("/health")
 async def health_check():
+    """
+    Проверка здоровья API.
+
+    Returns:
+        dict: Статус здоровья
+    """
     return {"status": "healthy"}

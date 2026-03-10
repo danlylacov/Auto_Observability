@@ -1,4 +1,3 @@
-# app/db/postgres/database.py
 """Database connection and session management."""
 
 import os
@@ -29,6 +28,12 @@ Base = declarative_base()
 
 
 def get_db() -> Generator[Session, None, None]:
+    """
+    Генератор для получения сессии базы данных.
+
+    Yields:
+        Session: Сессия базы данных, которая будет закрыта после использования
+    """
     db = SessionLocal()
     try:
         yield db

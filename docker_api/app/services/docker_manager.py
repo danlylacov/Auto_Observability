@@ -1,16 +1,32 @@
-import re
+import logging
 from typing import Optional, Dict
 
 import docker
 
+logger = logging.getLogger(__name__)
+
 
 class DockerManager:
+    """
+    Класс для управления Docker контейнерами.
+
+    Предоставляет методы для работы с контейнерами, образами, томами и сетями Docker.
+    """
+
     def __init__(self):
+        """
+        Инициализация DockerManager.
+
+        Создает клиент Docker из переменных окружения.
+        """
         self.client = docker.from_env()
 
     def discover_containers(self) -> list:
         """
-        Возвращает список словарей со всеми данными каждого контейнера
+        Возвращает список словарей со всеми данными каждого контейнера.
+
+        Returns:
+            list: Список словарей с данными контейнеров
         """
         all_data = []
         for container in self.client.containers.list(all=True):
@@ -18,7 +34,15 @@ class DockerManager:
         return all_data
 
     def start_container(self, container_id_or_name: str) -> str:
-        """Запустить контейнер"""
+        """
+        Запустить контейнер.
+
+        Args:
+            container_id_or_name: Идентификатор или имя контейнера
+
+        Returns:
+            str: Сообщение о результате операции
+        """
         try:
             container = self.client.containers.get(container_id_or_name)
             container.start()
@@ -39,14 +63,28 @@ class DockerManager:
             network_mode: Optional[str] = None
     ) -> dict:
         """
-        Пуллит образ и запускает контейнер
+        Загружает образ и запускает контейнер.
+
+        Args:
+            image_name: Имя образа Docker
+            command: Команда для запуска контейнера
+            name: Имя контейнера
+            detach: Запуск в фоновом режиме
+            ports: Маппинг портов
+            volumes: Маппинг томов
+            environment: Переменные окружения
+            network: Имя сети
+            network_mode: Режим сети
+
+        Returns:
+            dict: Результат операции с container_id и pull_status или ошибка
         """
         try:
             try:
                 self.client.images.get(image_name)
                 pull_status = "использован локальный образ"
             except docker.errors.ImageNotFound:
-                print(f"Образ {image_name} не найден локально. Выполняется pull...")
+                logger.info(f"Образ {image_name} не найден локально. Выполняется pull...")
                 self.client.images.pull(image_name)
                 pull_status = "образ успешно загружен"
 
@@ -54,10 +92,25 @@ class DockerManager:
                 try:
                     container = self.client.containers.get(name)
                     if container.status == "running":
-                        return {"status": "Контейнер уже запущен", "container_id": container.short_id if hasattr(container, 'short_id') else str(container.id)[:12]}
+                        container_id = (
+                            container.short_id if hasattr(container, 'short_id')
+                            else str(container.id)[:12]
+                        )
+                        return {
+                            "status": "Контейнер уже запущен",
+                            "container_id": container_id
+                        }
                     else:
                         container.start()
-                        return {"status": "Контейнер перезапущен", "container_id": container.short_id if hasattr(container, 'short_id') else str(container.id)[:12], "pull_status": pull_status}
+                        container_id = (
+                            container.short_id if hasattr(container, 'short_id')
+                            else str(container.id)[:12]
+                        )
+                        return {
+                            "status": "Контейнер перезапущен",
+                            "container_id": container_id,
+                            "pull_status": pull_status
+                        }
                 except docker.errors.NotFound:
                     pass
                 except Exception as e:
@@ -85,14 +138,25 @@ class DockerManager:
 
             container = self.client.containers.run(**run_kwargs)
 
-            container_id = container.short_id if hasattr(container, 'short_id') else str(container.id)[:12]
+            container_id = (
+                container.short_id if hasattr(container, 'short_id')
+                else str(container.id)[:12]
+            )
             return {'container_id': container_id, 'pull_status': pull_status}
 
         except Exception as e:
             return {'error': f"Неожиданная ошибка при запуске контейнера: {e}"}
 
     def stop_container(self, container_id_or_name: str) -> str:
-        """Остановить контейнер"""
+        """
+        Остановить контейнер.
+
+        Args:
+            container_id_or_name: Идентификатор или имя контейнера
+
+        Returns:
+            str: Сообщение о результате операции
+        """
         try:
             container = self.client.containers.get(container_id_or_name)
             container.stop()
@@ -101,7 +165,16 @@ class DockerManager:
             return f"Ошибка при остановке: {e}"
 
     def remove_container(self, container_id_or_name: str, force: bool = False) -> None:
-        """Удалить контейнер (force=True удалит даже запущенный)"""
+        """
+        Удалить контейнер.
+
+        Args:
+            container_id_or_name: Идентификатор или имя контейнера
+            force: Принудительное удаление (удалит даже запущенный)
+
+        Returns:
+            str: Сообщение о результате операции
+        """
         try:
             container = self.client.containers.get(container_id_or_name)
             container.remove(force=force)
@@ -110,7 +183,16 @@ class DockerManager:
             return f"Ошибка при удалении: {e}"
 
     def remove_volume(self, volume_name: str, force: bool = False) -> None:
-        """Удалить volume"""
+        """
+        Удалить том.
+
+        Args:
+            volume_name: Имя тома
+            force: Принудительное удаление
+
+        Returns:
+            str: Сообщение о результате операции
+        """
         try:
             volume = self.client.volumes.get(volume_name)
             volume.remove(force=force)
@@ -119,11 +201,25 @@ class DockerManager:
             return f"Ошибка при удалении тома: {e}"
 
     def prune_volumes(self) -> dict:
-        """Удалить ВСЕ неиспользуемые тома (очистка)"""
+        """
+        Удалить все неиспользуемые тома.
+
+        Returns:
+            dict: Результат операции очистки
+        """
         return self.client.volumes.prune()
 
     def remove_image(self, image_id_or_name: str, force: bool = False) -> str:
-        """Удалить образ"""
+        """
+        Удалить образ.
+
+        Args:
+            image_id_or_name: Идентификатор или имя образа
+            force: Принудительное удаление
+
+        Returns:
+            str: Сообщение о результате операции
+        """
         try:
             self.client.images.remove(image=image_id_or_name, force=force)
             return f"Образ {image_id_or_name} удален."
@@ -131,8 +227,13 @@ class DockerManager:
             return f"Ошибка при удалении образа: {e}"
 
     def cleanup_system(self) -> dict[str, str]:
-        """Очистка системы: удаление всех остановленных контейнеров,
-        неиспользуемых сетей и образов без тегов."""
+        """
+        Очистка системы: удаление всех остановленных контейнеров,
+        неиспользуемых сетей и образов без тегов.
+
+        Returns:
+            dict[str, str]: Отчет об очистке системы
+        """
         report = {
             "containers": self.client.containers.prune(),
             "networks": self.client.networks.prune(),

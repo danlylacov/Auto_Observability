@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from app.routers import classificate
 
 app = FastAPI(
@@ -13,12 +14,25 @@ app.include_router(classificate.router, prefix="/api/v1/classificate", tags=["cl
 
 @app.get("/")
 async def root():
+    """
+    Корневой эндпоинт API.
+
+    Returns:
+        dict: Информация об API
+    """
     return {
         "message": "Docker classification API",
         "docs": "/docs",
         "version": app.version
     }
 
+
 @app.get("/health")
 async def health_check():
+    """
+    Проверка здоровья API.
+
+    Returns:
+        dict: Статус здоровья
+    """
     return {"status": "healthy"}

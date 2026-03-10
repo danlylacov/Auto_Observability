@@ -1,7 +1,10 @@
-import docker
-import time
+import logging
 import os
+
+import docker
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class PrometheusManager:
@@ -10,13 +13,18 @@ class PrometheusManager:
         if config_path is None:
             config_path = os.path.join(os.path.dirname(__file__), 'prometheus', 'prometheus.yml')
         self.config_path = os.path.abspath(config_path)
-        self.config_dir = os.path.dirname(self.config_path)  # директория prometheus/
+        self.config_dir = os.path.dirname(self.config_path)
         self.container = None
         self.prometheus_settings = self.get_prometheus_settings()
         self.container_name = self.prometheus_settings["prometheus-settings"]["name"]
 
     def start(self):
-        """Запускает контейнер с монтированием всей директории prometheus/"""
+        """
+        Запускает контейнер с монтированием всей директории prometheus/.
+
+        Returns:
+            bool: True если контейнер запущен успешно, False при ошибке
+        """
         self.stop()
 
         try:
@@ -27,12 +35,10 @@ class PrometheusManager:
                 }
             }
 
-            # Используем network_mode: host для прямого доступа к хосту
-            # Это позволяет Prometheus обращаться к localhost:9187 напрямую
             self.container = self.client.containers.run(
                 image=self.prometheus_settings["prometheus-settings"]["image"],
                 name=self.container_name,
-                network_mode='host',  # Использует сеть хоста напрямую
+                network_mode='host',
                 volumes=volumes,
                 detach=True,
                 restart_policy={"Name": "unless-stopped"}
@@ -41,22 +47,32 @@ class PrometheusManager:
             return True
 
         except Exception as e:
-            print(f"Ошибка запуска: {e}")
+            logger.error(f"Ошибка запуска: {e}")
             return False
 
     def stop(self) -> bool:
-        """Останавливает и удаляет контейнер"""
+        """
+        Останавливает и удаляет контейнер.
+
+        Returns:
+            bool: True если контейнер остановлен успешно, False при ошибке
+        """
         try:
             container = self.client.containers.get(self.container_name)
             container.stop()
             container.remove()
             return True
         except Exception as e:
-            print(f"Ошибка при остановке: {e}")
+            logger.error(f"Ошибка при остановке: {e}")
             return False
 
     def status(self) -> dict:
-        """Проверяет статус контейнера"""
+        """
+        Проверяет статус контейнера.
+
+        Returns:
+            dict: Статус контейнера
+        """
         try:
             container = self.client.containers.get(self.container_name)
             return {
@@ -69,7 +85,13 @@ class PrometheusManager:
     @staticmethod
     def get_prometheus_settings(file_path: str = None) -> dict[str, dict[str, str]]:
         """
-        Извлекает все переменные из YAML файла с настройками Prometheus
+        Извлекает все переменные из YAML файла с настройками Prometheus.
+
+        Args:
+            file_path: Путь к файлу настроек. Если None, используется файл в текущей директории.
+
+        Returns:
+            dict[str, dict[str, str]]: Настройки Prometheus
         """
         if file_path is None:
             file_path = os.path.join(os.path.dirname(__file__), 'prometheus_settings.yml')
@@ -81,7 +103,14 @@ class PrometheusManager:
     def update_prometheus_settings(settings: dict[str, dict[str, str]],
                                    file_path: str = None):
         """
-        Обновляет YAML файл с настройками Prometheus
+        Обновляет YAML файл с настройками Prometheus.
+
+        Args:
+            settings: Новые настройки Prometheus
+            file_path: Путь к файлу настроек. Если None, используется файл в текущей директории.
+
+        Returns:
+            bool: True при успешном обновлении
         """
         if file_path is None:
             file_path = os.path.join(os.path.dirname(__file__), 'prometheus_settings.yml')

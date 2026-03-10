@@ -1,10 +1,11 @@
-from datetime import datetime
 import logging
 from typing import Dict, Any
+
 from fastapi import APIRouter, status, HTTPException
-from app.services.prometheus_config_generator import PrometheusConfigGenerator
-from app.services.minio import MinioService
+
 from app.models.container_data import ContainerData
+from app.services.minio import MinioService
+from app.services.prometheus_config_generator import PrometheusConfigGenerator
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -13,7 +14,17 @@ logger = logging.getLogger(__name__)
 @router.post("/", status_code=status.HTTP_200_OK)
 async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
     """
-    Генерирует конфигурацию Prometheus для контейнера
+    Генерирует конфигурацию Prometheus для контейнера.
+
+    Args:
+        container_data: Данные о контейнере
+        host: Адрес хоста
+
+    Returns:
+        Dict[str, Dict]: Конфигурация и информация об экспортере
+
+    Raises:
+        HTTPException: При ошибке генерации конфигурации
     """
     try:
         generator = PrometheusConfigGenerator()

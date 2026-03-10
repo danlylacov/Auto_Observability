@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, Any
+
 from fastapi import APIRouter, status, HTTPException
+
 from app.services.prometheus_manager import PrometheusManager
 from app.services.update_config import UpdateConfig
 
@@ -9,16 +11,36 @@ logger = logging.getLogger(__name__)
 
 
 def get_prometheus_manager() -> PrometheusManager:
+    """
+    Получение экземпляра PrometheusManager.
+
+    Returns:
+        PrometheusManager: Экземпляр менеджера Prometheus
+    """
     return PrometheusManager()
 
 
 def get_update_config() -> UpdateConfig:
+    """
+    Получение экземпляра UpdateConfig.
+
+    Returns:
+        UpdateConfig: Экземпляр обновления конфигурации
+    """
     return UpdateConfig()
 
 
 @router.post("/prometheus/start", status_code=status.HTTP_200_OK)
 async def start_prometheus() -> Dict[str, Any]:
-    """Запускает контейнер Prometheus"""
+    """
+    Запускает контейнер Prometheus.
+
+    Returns:
+        Dict[str, Any]: Результат запуска Prometheus
+
+    Raises:
+        HTTPException: При ошибке запуска Prometheus
+    """
     try:
         manager = get_prometheus_manager()
         result = manager.start()
@@ -39,7 +61,15 @@ async def start_prometheus() -> Dict[str, Any]:
 
 @router.post("/prometheus/stop", status_code=status.HTTP_200_OK)
 async def stop_prometheus() -> Dict[str, Any]:
-    """Останавливает контейнер Prometheus"""
+    """
+    Останавливает контейнер Prometheus.
+
+    Returns:
+        Dict[str, Any]: Результат остановки Prometheus
+
+    Raises:
+        HTTPException: При ошибке остановки Prometheus
+    """
     try:
         manager = get_prometheus_manager()
         result = manager.stop()
@@ -57,7 +87,15 @@ async def stop_prometheus() -> Dict[str, Any]:
 
 @router.get("/prometheus/status", status_code=status.HTTP_200_OK)
 async def get_prometheus_status() -> Dict[str, Any]:
-    """Получает статус контейнера Prometheus"""
+    """
+    Получает статус контейнера Prometheus.
+
+    Returns:
+        Dict[str, Any]: Статус контейнера Prometheus
+
+    Raises:
+        HTTPException: При ошибке получения статуса
+    """
     try:
         manager = get_prometheus_manager()
         status_info = manager.status()
@@ -72,7 +110,15 @@ async def get_prometheus_status() -> Dict[str, Any]:
 
 @router.get("/prometheus/settings", status_code=status.HTTP_200_OK)
 async def get_settings() -> Dict[str, Any]:
-    """Получает настройки Prometheus"""
+    """
+    Получает настройки Prometheus.
+
+    Returns:
+        Dict[str, Any]: Настройки Prometheus
+
+    Raises:
+        HTTPException: При ошибке получения настроек
+    """
     try:
         settings = PrometheusManager.get_prometheus_settings()
         return settings
@@ -86,7 +132,18 @@ async def get_settings() -> Dict[str, Any]:
 
 @router.post("/prometheus/settings", status_code=status.HTTP_200_OK)
 async def update_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
-    """Обновляет настройки Prometheus"""
+    """
+    Обновляет настройки Prometheus.
+
+    Args:
+        settings: Новые настройки Prometheus
+
+    Returns:
+        Dict[str, Any]: Результат обновления настроек
+
+    Raises:
+        HTTPException: При ошибке обновления настроек
+    """
     try:
         result = PrometheusManager.update_prometheus_settings(settings)
         if result:
@@ -106,7 +163,15 @@ async def update_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.post("/config/update", status_code=status.HTTP_200_OK)
 async def update_config() -> Dict[str, Any]:
-    """Обновляет конфигурацию Prometheus из MinIO"""
+    """
+    Обновляет конфигурацию Prometheus из MinIO.
+
+    Returns:
+        Dict[str, Any]: Результат обновления конфигурации
+
+    Raises:
+        HTTPException: При ошибке обновления конфигурации
+    """
     try:
         updater = get_update_config()
         updater.update()
