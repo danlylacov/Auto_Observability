@@ -5,6 +5,7 @@
       <div class="toolbar-actions">
         <select v-model="selectedConfig" class="input select-config">
           <option value="prometheus-signature">Prometheus signature</option>
+          <option value="prometheus-settings">Prometheus settings</option>
         </select>
         <button class="btn btn-secondary" @click="loadConfig" :disabled="loading">
           <span v-if="loading" class="loading"></span>
@@ -32,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, onBeforeUnmount } from 'vue'
+import { onMounted, ref, onBeforeUnmount, watch } from 'vue'
 import { EditorView } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { yaml } from '@codemirror/lang-yaml'
@@ -44,7 +45,7 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import yamlLib from 'js-yaml'
-import { configApi } from '../services/api'
+import { configApi, prometheusApi } from '../services/api'
 import { showToast } from '../utils/toast'
 
 const selectedConfig = ref('prometheus-signature')
@@ -85,6 +86,15 @@ const loadConfig = async () => {
       
       editorValue.value = content
       updateEditor(content)
+    } else if (selectedConfig.value === 'prometheus-settings') {
+      const settings = await prometheusApi.getManagerSettings()
+      const yamlContent = yamlLib.dump(settings, {
+        indent: 2,
+        lineWidth: -1,
+        noRefs: true
+      })
+      editorValue.value = yamlContent
+      updateEditor(yamlContent)
     }
   } catch (e: any) {
     console.error('Failed to load config:', e)
@@ -213,6 +223,9 @@ const saveConfig = async () => {
   try {
     if (selectedConfig.value === 'prometheus-signature') {
       await configApi.updateSignature(editorValue.value)
+    } else if (selectedConfig.value === 'prometheus-settings') {
+      const parsed = yamlLib.load(editorValue.value)
+      await prometheusApi.updateManagerSettings(parsed as any)
     }
     showToast('Configuration saved', 'success')
   } catch (e: any) {
@@ -226,6 +239,10 @@ const saveConfig = async () => {
 
 onMounted(() => {
   initEditor()
+  loadConfig()
+})
+
+watch(selectedConfig, () => {
   loadConfig()
 })
 

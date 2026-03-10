@@ -51,29 +51,45 @@ class UpdateConfig:
             print(f"Ошибка при получении списка файлов: {e}")
             return []
 
+    def _fix_target_for_host_network(self, target: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Исправляет адрес target для работы с network_mode: host.
+        Заменяет IP хоста (172.17.0.1, 172.17.0.2 и т.д.) на localhost,
+        так как Prometheus использует network_mode: host и может обращаться к хосту напрямую.
+        """
+        if not target or not target[0].get('targets'):
+            return target
+        
+        target_address = target[0]['targets'][0]
+        host_part = target_address.split(':')[0]
+        port_part = target_address.split(':')[-1] if ':' in target_address else '9187'
+        
+        # Заменяем IP хоста Docker сети на localhost для network_mode: host
+        if host_part.startswith('172.17.') or host_part == '127.0.0.1' or host_part == 'localhost':
+            target[0]['targets'][0] = f"localhost:{port_part}"
+            print(f"Исправлен target адрес для host network: {target_address} -> {target[0]['targets'][0]}")
+        
+        return target
+
     def update(self) -> None:
         """Обновляет конфигурацию Prometheus из MinIO"""
-        # Получаем основной конфиг
         main_config = self._get_yaml_file('mainConfig/prometheus.yml')
         if not main_config:
             print("Основной конфиг не найден в MinIO")
             return
 
-        # Сохраняем prometheus.yml
         prometheus_yml_path = os.path.join(self.prometheus_dir, 'prometheus.yml')
         with open(prometheus_yml_path, 'w', encoding='utf-8') as f:
             yaml.dump(main_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-        # Получаем все targets
         target_files = self._list_files('mainConfig/targets/')
-        
-        # Создаем директорию targets если её нет
+
         os.makedirs(self.targets_dir, exist_ok=True)
 
-        # Сохраняем каждый target файл
         for file_path in target_files:
             target_content = self._get_yaml_file(file_path)
             if target_content:
+                target_content = self._fix_target_for_host_network(target_content)
                 file_name = file_path.split('/')[-1]
                 target_path = os.path.join(self.targets_dir, file_name)
                 with open(target_path, 'w', encoding='utf-8') as f:
@@ -81,5 +97,5 @@ class UpdateConfig:
 
         print(f"Конфигурация обновлена: {len(target_files)} файлов targets")
 
-
-# TODO: сделать реплейс localhost на адрес во внутренней сети
+a = UpdateConfig()
+a.update()

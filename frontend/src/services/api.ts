@@ -2,12 +2,44 @@ import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081'
 
+console.log('API URL configured:', API_URL)
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 30000 // 30 секунд
 })
+
+// Добавляем interceptor для логирования запросов
+api.interceptors.request.use(
+  (config) => {
+    console.log(`Making ${config.method?.toUpperCase()} request to: ${config.url}`)
+    return config
+  },
+  (error) => {
+    console.error('Request error:', error)
+    return Promise.reject(error)
+  }
+)
+
+// Добавляем interceptor для логирования ответов
+api.interceptors.response.use(
+  (response) => {
+    console.log(`Response from ${response.config.url}:`, response.status)
+    return response
+  },
+  (error) => {
+    console.error(`Error from ${error.config?.url}:`, {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      data: error.response?.data
+    })
+    return Promise.reject(error)
+  }
+)
 
 export interface ContainerInfo {
   Id: string
@@ -23,6 +55,27 @@ export interface ContainerInfo {
   NetworkSettings: any
 }
 
+export interface PrometheusConfigData {
+  config_id: number
+  status: string
+  stack: string
+  exporter_image: string
+  exporter_port: number
+  job_name: string
+  created_at: string | null
+  exporter: {
+    exists: boolean
+    running: boolean
+    container_id: string | null
+    info: {
+      container_id: string
+      name: string
+      status: string
+      image: string
+    } | null
+  }
+}
+
 export interface ContainerData {
   info: ContainerInfo
   classification: {
@@ -31,6 +84,7 @@ export interface ContainerData {
   host_id?: string
   host_name?: string
   has_prometheus_config?: boolean
+  prometheus_config?: PrometheusConfigData | null
 }
 
 export interface ContainersResponse {
@@ -277,6 +331,36 @@ export const prometheusApi = {
 
   async removeServiceFromMainConfig(request: RemoveServiceRequest): Promise<any> {
     const response = await api.delete('/api/v1/prometheus/main_config/remove', { data: request })
+    return response.data
+  },
+
+  async startManager(): Promise<any> {
+    const response = await api.post('/api/v1/prometheus/manager/start')
+    return response.data
+  },
+
+  async stopManager(): Promise<any> {
+    const response = await api.post('/api/v1/prometheus/manager/stop')
+    return response.data
+  },
+
+  async getManagerStatus(): Promise<any> {
+    const response = await api.get('/api/v1/prometheus/manager/status')
+    return response.data
+  },
+
+  async getManagerSettings(): Promise<any> {
+    const response = await api.get('/api/v1/prometheus/manager/settings')
+    return response.data
+  },
+
+  async updateManagerSettings(settings: Record<string, any>): Promise<any> {
+    const response = await api.post('/api/v1/prometheus/manager/settings', settings)
+    return response.data
+  },
+
+  async updateManagerConfig(): Promise<any> {
+    const response = await api.post('/api/v1/prometheus/manager/config/update')
     return response.data
   }
 }

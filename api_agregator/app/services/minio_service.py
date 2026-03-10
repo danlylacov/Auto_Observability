@@ -72,3 +72,42 @@ class MinioService:
             content = self._get_yaml_file(file_path, bucket)
             result[file_path.split('/')[-1]] = content
         return result
+
+    def delete_file(self, file_path: str, bucket: Optional[str] = None) -> bool:
+        """
+        Удаляет один файл из MinIO
+        """
+        bucket = bucket or self.bucket_name
+        try:
+            self.s3_client.delete_object(Bucket=bucket, Key=file_path)
+            return True
+        except ClientError as e:
+            print(f"Ошибка при удалении файла {file_path}: {e}")
+            return False
+
+    def delete_files_by_prefix(self, prefix: str, bucket: Optional[str] = None) -> int:
+        """
+        Удаляет все файлы с заданным префиксом (папкой) из MinIO
+        Возвращает количество удаленных файлов
+        """
+        bucket = bucket or self.bucket_name
+        try:
+            # Получаем список всех файлов с данным префиксом
+            files_to_delete = self._list_files(prefix=prefix, bucket=bucket)
+            
+            if not files_to_delete:
+                return 0
+            
+            # Удаляем все файлы
+            deleted_count = 0
+            for file_path in files_to_delete:
+                try:
+                    self.s3_client.delete_object(Bucket=bucket, Key=file_path)
+                    deleted_count += 1
+                except ClientError as e:
+                    print(f"Ошибка при удалении файла {file_path}: {e}")
+            
+            return deleted_count
+        except Exception as e:
+            print(f"Ошибка при удалении файлов с префиксом {prefix}: {e}")
+            return 0

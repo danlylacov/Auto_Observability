@@ -27,10 +27,12 @@ class PrometheusManager:
                 }
             }
 
+            # Используем network_mode: host для прямого доступа к хосту
+            # Это позволяет Prometheus обращаться к localhost:9187 напрямую
             self.container = self.client.containers.run(
                 image=self.prometheus_settings["prometheus-settings"]["image"],
                 name=self.container_name,
-                ports={'9090/tcp': int(self.prometheus_settings["prometheus-settings"]["port"])},
+                network_mode='host',  # Использует сеть хоста напрямую
                 volumes=volumes,
                 detach=True,
                 restart_policy={"Name": "unless-stopped"}
@@ -86,16 +88,3 @@ class PrometheusManager:
         with open(file_path, 'w', encoding='utf-8') as file:
             yaml.dump(settings, file)
         return True
-
-
-# Пример использования
-if __name__ == "__main__":
-    manager = PrometheusManager(config_path="./prometheus/prometheus.yml")
-
-    # Запуск
-    # manager.start()
-
-    # Проверка статуса
-    # print("Статус:", manager.status())
-
-    print(manager.get_prometheus_settings())

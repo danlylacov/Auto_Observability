@@ -147,8 +147,3 @@ class MinioService:
             print(f"Ошибка при удалении файла {file_path}: {e}")
             return False
 
-
-a = MinioService()
-print(a.list_files())
-print(a.get_yaml_file('configs/ce5c05e6e6cefb77e432e8de1db42d413a9e2a5d2c0f82b28a8de921202eae42/auto_observability-postgres-2_postgres.yml'))
-print(a.get_yaml_file('configs/ce5c05e6e6cefb77e432e8de1db42d413a9e2a5d2c0f82b28a8de921202eae42/scrape_config.yml'))

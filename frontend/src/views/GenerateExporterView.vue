@@ -76,7 +76,9 @@
         <div class="card config-card">
           <h2 class="card-title">Step 1: Generate Prometheus Config</h2>
           <p class="card-description">
-            Generate the Prometheus configuration file for this container. This will create the necessary exporter configuration.
+            Generate the Prometheus configuration file for this container. 
+            <strong>Note:</strong> The exporter must be running before you can generate the config.
+            If you haven't started the exporter yet, please go to Step 2 first.
           </p>
           <div class="action-section">
             <button 
@@ -90,7 +92,25 @@
             </button>
           </div>
           <div v-if="configError" class="error-box">
-            {{ configError }}
+            <div class="error-content">
+              <strong>Error generating config:</strong>
+              <p>{{ configError }}</p>
+              <div v-if="isExporterError" class="error-solution">
+                <p><strong>Solution:</strong></p>
+                <ol>
+                  <li>Make sure the exporter container is running</li>
+                  <li>If the exporter is not running, go to Step 2 and start it first</li>
+                  <li>Then try generating the config again</li>
+                </ol>
+                <button 
+                  @click="scrollToExporterSection" 
+                  class="btn btn-sm btn-primary"
+                  style="margin-top: 8px;"
+                >
+                  Go to Step 2: Start Exporter
+                </button>
+              </div>
+            </div>
           </div>
           <div v-if="configData" class="success-box">
             <p>✓ Configuration generated successfully!</p>
@@ -210,6 +230,11 @@ const stoppingExporter = ref(false)
 const actionError = ref('')
 const actionSuccess = ref('')
 
+const isExporterError = computed(() => {
+  const error = configError.value.toLowerCase()
+  return error.includes('exporter') && (error.includes('not found') || error.includes('not running'))
+})
+
 const containerName = computed(() => {
   return containerData.value?.info.Name?.replace(/^\//, '') || 'Unknown'
 })
@@ -318,9 +343,18 @@ const handleGenerateConfig = async () => {
     }
     
     await loadContainer()
+    showToast('Prometheus config generated successfully!', 'success')
   } catch (error: any) {
     console.error('Failed to generate config:', error)
-    configError.value = error.response?.data?.detail || error.message || 'Failed to generate config'
+    const errorDetail = error.response?.data?.detail || error.message || 'Failed to generate config'
+    configError.value = errorDetail
+    
+    // Show toast with error
+    if (errorDetail.includes('exporter') && (errorDetail.includes('not found') || errorDetail.includes('not running'))) {
+      showToast('Please start the exporter first before generating config', 'error', 5000)
+    } else {
+      showToast(errorDetail, 'error', 5000)
+    }
   } finally {
     generatingConfig.value = false
   }
@@ -380,14 +414,31 @@ const handleRegenerateConfig = async () => {
       exporterPort.value = result.config.info.exporter_port
     }
     
+    showToast('Configuration regenerated successfully!', 'success')
     setTimeout(() => {
       actionSuccess.value = ''
     }, 3000)
   } catch (error: any) {
     console.error('Failed to regenerate config:', error)
-    actionError.value = error.response?.data?.detail || error.message || 'Failed to regenerate config'
+    const errorDetail = error.response?.data?.detail || error.message || 'Failed to regenerate config'
+    actionError.value = errorDetail
+    
+    if (errorDetail.includes('exporter') && (errorDetail.includes('not found') || errorDetail.includes('not running'))) {
+      showToast('Please start the exporter first before regenerating config', 'error', 5000)
+    } else {
+      showToast(errorDetail, 'error', 5000)
+    }
   } finally {
     regeneratingConfig.value = false
+  }
+}
+
+const scrollToExporterSection = () => {
+  const exporterSection = document.querySelector('.exporter-card')
+  if (exporterSection) {
+    exporterSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Remove disabled class temporarily to allow interaction
+    exporterSection.classList.remove('disabled')
   }
 }
 
@@ -550,6 +601,48 @@ onMounted(() => {
   background-color: rgba(244, 67, 54, 0.1);
   color: var(--error);
   font-size: 14px;
+}
+
+.error-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.error-content strong {
+  font-weight: 600;
+}
+
+.error-content p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.error-solution {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  border-left: 3px solid var(--error);
+}
+
+.error-solution p {
+  margin: 0 0 8px 0;
+}
+
+.error-solution ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.error-solution li {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 .success-box {

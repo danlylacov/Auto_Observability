@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 prometheus_generation_url = os.getenv("PROMETHEUS_GENERATION_URL")
 docker_api_url = os.getenv("DOCKER_API_URL")
+prometheus_manager_url = os.getenv("PROMETHEUS_MANAGER_URL")
+
+
+def get_prometheus_manager_gateway() -> APIGateway:
+    """
+    Возвращает APIGateway для Prometheus Manager.
+    Бросает понятную ошибку, если PROMETHEUS_MANAGER_URL не задан.
+    """
+    if not prometheus_manager_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PROMETHEUS_MANAGER_URL is not configured in environment"
+        )
+    return APIGateway(prometheus_manager_url)
 
 
 @router.post("/generate_config", status_code=status.HTTP_200_OK)
@@ -58,7 +72,100 @@ async def generate_config(
     if classification.get("result"):
         stack = classification["result"][0][0] if classification["result"] else None
 
-    # Вызываем сервис генерации с параметром host
+    # ПРОВЕРЯЕМ ЭКСПОРТЕР ПЕРЕД ГЕНЕРАЦИЕЙ КОНФИГА
+    exporter_name = f"{container_name}-exporter"
+    exporter_name_lower = exporter_name.lower()
+    all_containers_data = docker_containers.get_containers()
+    
+    exporter_found = False
+    exporter_running = False
+    exporter_info = None
+    
+    logger.info(f"Checking exporter before config generation: exporter_name={exporter_name}, host_id={host_id}")
+    
+    # Сначала ищем экспортер по точному совпадению host_id и имени
+    for exp_container_id, exp_container_data in all_containers_data.items():
+        if isinstance(exp_container_data, dict):
+            exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
+            exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
+            
+            # Проверяем совпадение имени экспортера и хоста
+            if (exp_container_name.lower() == exporter_name_lower and 
+                exp_container_host == host_id):
+                exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
+                exporter_found = True
+                exporter_running = exp_container_status.lower() in ("running", "up")
+                
+                exporter_info = {
+                    "container_id": exp_container_id,
+                    "name": exp_container_name,
+                    "status": exp_container_status,
+                    "image": exp_container_data.get("info", {}).get("Config", {}).get("Image", ""),
+                }
+                
+                logger.info(
+                    f"Found exporter: name={exp_container_name}, host={exp_container_host}, "
+                    f"status={exp_container_status}, running={exporter_running}"
+                )
+                break
+    
+    # Если не нашли по точному совпадению, пробуем найти только по имени (fallback)
+    if not exporter_found:
+        logger.debug(f"Exporter not found with exact host match, trying fallback search by name only")
+        for exp_container_id, exp_container_data in all_containers_data.items():
+            if isinstance(exp_container_data, dict):
+                exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
+                exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
+                
+                if exp_container_name.lower() == exporter_name_lower:
+                    exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
+                    exporter_found = True
+                    exporter_running = exp_container_status.lower() in ("running", "up")
+                    
+                    exporter_info = {
+                        "container_id": exp_container_id,
+                        "name": exp_container_name,
+                        "status": exp_container_status,
+                        "image": exp_container_data.get("info", {}).get("Config", {}).get("Image", ""),
+                    }
+                    
+                    logger.warning(
+                        f"Found exporter using fallback search: name={exp_container_name}, "
+                        f"host={exp_container_host} (expected: {host_id}), status={exp_container_status}, "
+                        f"running={exporter_running}"
+                    )
+                    break
+    
+    # Если экспортер не найден или не запущен, возвращаем ошибку ДО генерации конфига
+    if not exporter_found:
+        logger.warning(f"Exporter '{exporter_name}' not found on host '{host_id}'")
+        # Логируем все найденные экспортеры для отладки
+        all_exporters = [
+            (data.get("info", {}).get("Name", "").lstrip("/"), 
+             data.get("host_name") or data.get("host_id"))
+            for data in all_containers_data.values()
+            if isinstance(data, dict) and "-exporter" in data.get("info", {}).get("Name", "").lower()
+        ]
+        logger.debug(f"Available exporters: {all_exporters}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exporter '{exporter_name}' not found on host '{host_id}'. Please start the exporter first using /api/v1/prometheus/up_exporter endpoint."
+        )
+    
+    if not exporter_running:
+        exporter_status = exporter_info.get('status', 'unknown') if exporter_info else 'unknown'
+        logger.warning(
+            f"Exporter '{exporter_name}' found but not running. Status: {exporter_status}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exporter '{exporter_name}' is not running (status: {exporter_status}). Please start the exporter first."
+        )
+    
+    logger.info(f"Exporter check passed. Proceeding with config generation for container {container_id}")
+    
+    # Вызываем сервис генерации с параметром host (только если экспортер найден и запущен)
     api_gateway = APIGateway(prometheus_generation_url)
     config_data = api_gateway.make_request(
         method='POST',
@@ -334,22 +441,44 @@ async def get_all_configs(db: Session = Depends(get_db)) -> dict[str, Any]:
             if "-exporter" in container_name.lower():
                 logger.debug(f"Found potential exporter container: {container_name} on host: {container_host}")
 
-            if container_name.lower() == exporter_name.lower() and container_host == host_name:
-                container_status = container_data.get("info", {}).get("State", {}).get("Status", "")
-                exporter_running = container_status.lower() in ("running", "up")
-                exporter_container_id = container_id
-                
-                logger.info(f"Found exporter: {container_name}, status: {container_status}, running: {exporter_running}")
-                
-                exporter_info = {
-                    "container_id": container_id,
-                    "name": container_name,
-                    "status": container_status,
-                    "image": container_data.get("info", {}).get("Config", {}).get("Image", ""),
-                    "created": container_data.get("info", {}).get("Created", ""),
-                    "network_settings": container_data.get("info", {}).get("NetworkSettings", {})
-                }
-                break
+            # Проверяем совпадение имени экспортера (сначала по host, потом fallback)
+            if container_name.lower() == exporter_name.lower():
+                if container_host == host_name:
+                    # Точное совпадение по host и имени
+                    container_status = container_data.get("info", {}).get("State", {}).get("Status", "")
+                    exporter_running = container_status.lower() in ("running", "up")
+                    exporter_container_id = container_id
+                    
+                    logger.info(f"Found exporter: {container_name}, host: {container_host}, status: {container_status}, running: {exporter_running}")
+                    
+                    exporter_info = {
+                        "container_id": container_id,
+                        "name": container_name,
+                        "status": container_status,
+                        "image": container_data.get("info", {}).get("Config", {}).get("Image", ""),
+                        "created": container_data.get("info", {}).get("Created", ""),
+                        "network_settings": container_data.get("info", {}).get("NetworkSettings", {})
+                    }
+                    break
+                elif not exporter_info:
+                    # Fallback: сохраняем первый найденный экспортер с таким именем
+                    container_status = container_data.get("info", {}).get("State", {}).get("Status", "")
+                    exporter_running = container_status.lower() in ("running", "up")
+                    exporter_container_id = container_id
+                    
+                    logger.warning(
+                        f"Found exporter using fallback: {container_name}, host: {container_host} "
+                        f"(expected: {host_name}), status: {container_status}, running: {exporter_running}"
+                    )
+                    
+                    exporter_info = {
+                        "container_id": container_id,
+                        "name": container_name,
+                        "status": container_status,
+                        "image": container_data.get("info", {}).get("Config", {}).get("Image", ""),
+                        "created": container_data.get("info", {}).get("Created", ""),
+                        "network_settings": container_data.get("info", {}).get("NetworkSettings", {})
+                    }
 
         config_data = {
             "config_id": config.id,
@@ -403,17 +532,181 @@ async def get_config_files(config_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/main_config/add", status_code=status.HTTP_200_OK)
-async def add_main_config_service(request: AddServiceRequest) -> Dict[str, Any]:
+async def add_main_config_service(
+    request: AddServiceRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
-    Добавляет сервис в основной конфиг Prometheus
+    Добавляет сервис в основной конфиг Prometheus.
+    Проверяет, что экспортер запущен перед добавлением.
     """
-    api_gateway = APIGateway(prometheus_generation_url)
-    result = api_gateway.make_request(
-        method='POST',
-        endpoint='/api/v1/main-config/add',
-        json_data=request.model_dump()
+    # Извлекаем job_name из запроса
+    logger.debug(f"Received request: {request.model_dump()}")
+    logger.debug(f"scrape_config type: {type(request.scrape_config)}")
+    logger.debug(f"scrape_config value: {request.scrape_config}")
+    
+    job_name = None
+    if request.scrape_config and isinstance(request.scrape_config, dict):
+        scrape_configs = request.scrape_config.get('scrape_configs', [])
+        logger.debug(f"scrape_configs: {scrape_configs}")
+        if scrape_configs and len(scrape_configs) > 0:
+            if isinstance(scrape_configs[0], dict):
+                job_name = scrape_configs[0].get('job_name')
+            else:
+                job_name = getattr(scrape_configs[0], 'job_name', None)
+    
+    logger.info(f"Extracted job_name: {job_name}")
+    
+    if not job_name:
+        logger.error(f"Job name not found in request. scrape_config: {request.scrape_config}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Job name is required in scrape_config.scrape_configs[0].job_name"
+        )
+    
+    # Находим конфиг Prometheus по job_name
+    config = db.query(PrometheusConfig).filter(
+        PrometheusConfig.job_name == job_name,
+        PrometheusConfig.status == "active"
+    ).order_by(PrometheusConfig.created_at.desc()).first()
+    
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Prometheus config with job_name '{job_name}' not found"
+        )
+    
+    # Проверяем статус экспортера
+    config_metadata = config.config_metadata or {}
+    host_name = config_metadata.get('host_name', 'localhost')
+    container_name = config.container_name.lstrip("/")
+    exporter_name = f"{container_name}-exporter"
+    exporter_name_lower = exporter_name.lower()
+    
+    docker_containers = DockerContainers()
+    all_containers_data = docker_containers.get_containers()
+    
+    exporter_found = False
+    exporter_running = False
+    exporter_info = None
+    
+    logger.info(
+        f"Checking exporter before adding to main config: exporter_name={exporter_name}, "
+        f"host_name={host_name}, job_name={job_name}"
     )
-    return result
+    
+    # Сначала ищем экспортер по точному совпадению host_name и имени
+    for exp_container_id, exp_container_data in all_containers_data.items():
+        if isinstance(exp_container_data, dict):
+            exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
+            exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
+            
+            logger.debug(
+                f"Checking exporter candidate: name={exp_container_name}, host={exp_container_host}, "
+                f"expected_name={exporter_name_lower}, expected_host={host_name}"
+            )
+            
+            if (exp_container_name.lower() == exporter_name_lower and 
+                exp_container_host == host_name):
+                exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
+                exporter_found = True
+                exporter_running = exp_container_status.lower() in ("running", "up")
+                
+                exporter_info = {
+                    "container_id": exp_container_id,
+                    "name": exp_container_name,
+                    "status": exp_container_status,
+                }
+                
+                logger.info(
+                    f"Found exporter: name={exp_container_name}, host={exp_container_host}, "
+                    f"status={exp_container_status}, running={exporter_running}"
+                )
+                break
+    
+    # Если не нашли по точному совпадению, пробуем найти только по имени (fallback)
+    if not exporter_found:
+        logger.debug(f"Exporter not found with exact host match, trying fallback search by name only")
+        for exp_container_id, exp_container_data in all_containers_data.items():
+            if isinstance(exp_container_data, dict):
+                exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
+                exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
+                
+                if exp_container_name.lower() == exporter_name_lower:
+                    exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
+                    exporter_found = True
+                    exporter_running = exp_container_status.lower() in ("running", "up")
+                    
+                    exporter_info = {
+                        "container_id": exp_container_id,
+                        "name": exp_container_name,
+                        "status": exp_container_status,
+                    }
+                    
+                    logger.warning(
+                        f"Found exporter using fallback search: name={exp_container_name}, "
+                        f"host={exp_container_host} (expected: {host_name}), status={exp_container_status}, "
+                        f"running={exporter_running}"
+                    )
+                    break
+    
+    # Если экспортер не найден или не запущен, возвращаем ошибку
+    if not exporter_found:
+        logger.warning(f"Exporter '{exporter_name}' not found on host '{host_name}'")
+        # Логируем все найденные экспортеры для отладки
+        all_exporters = [
+            (data.get("info", {}).get("Name", "").lstrip("/"), 
+             data.get("host_name") or data.get("host_id"))
+            for data in all_containers_data.values()
+            if isinstance(data, dict) and "-exporter" in data.get("info", {}).get("Name", "").lower()
+        ]
+        logger.debug(f"Available exporters: {all_exporters}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exporter '{exporter_name}' not found on host '{host_name}'. Please start the exporter first."
+        )
+    
+    if not exporter_running:
+        exporter_status = exporter_info.get('status', 'unknown') if exporter_info else 'unknown'
+        logger.warning(
+            f"Exporter '{exporter_name}' found but not running. Status: {exporter_status}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exporter '{exporter_name}' is not running (status: {exporter_status}). Please start the exporter first before adding to main config."
+        )
+    
+    logger.info(f"Exporter check passed. Adding service '{job_name}' to main config")
+    
+    # Если экспортер запущен, добавляем в основной конфиг
+    try:
+        if not prometheus_generation_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="PROMETHEUS_GENERATION_URL is not configured"
+            )
+        
+        logger.info(f"Making request to prometheus_generation service: {prometheus_generation_url}/api/v1/main-config/add")
+        logger.debug(f"Request data: {request.model_dump()}")
+        
+        api_gateway = APIGateway(prometheus_generation_url)
+        result = api_gateway.make_request(
+            method='POST',
+            endpoint='/api/v1/main-config/add',
+            json_data=request.model_dump()
+        )
+        
+        logger.info(f"Successfully added service '{job_name}' to main config")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding service to main config: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add service to main config: {str(e)}"
+        )
 
 
 @router.delete("/main_config/remove", status_code=status.HTTP_200_OK)
@@ -439,5 +732,85 @@ async def get_main_config() -> Dict[str, Any]:
     result = api_gateway.make_request(
         method='GET',
         endpoint='/api/v1/main-config/'
+    )
+    return result
+
+
+@router.post("/manager/start", status_code=status.HTTP_200_OK)
+async def start_prometheus_manager() -> Dict[str, Any]:
+    """
+    Запускает Prometheus через Prometheus Manager сервис.
+    """
+    api_gateway = get_prometheus_manager_gateway()
+    result = api_gateway.make_request(
+        method='POST',
+        endpoint='/api/v1/manage/prometheus/start',
+    )
+    return result
+
+
+@router.post("/manager/stop", status_code=status.HTTP_200_OK)
+async def stop_prometheus_manager() -> Dict[str, Any]:
+    """
+    Останавливает Prometheus через Prometheus Manager сервис.
+    """
+    api_gateway = get_prometheus_manager_gateway()
+    result = api_gateway.make_request(
+        method='POST',
+        endpoint='/api/v1/manage/prometheus/stop',
+    )
+    return result
+
+
+@router.get("/manager/status", status_code=status.HTTP_200_OK)
+async def status_prometheus_manager() -> Dict[str, Any]:
+    """
+    Получает статус Prometheus из Prometheus Manager сервиса.
+    """
+    api_gateway = get_prometheus_manager_gateway()
+    result = api_gateway.make_request(
+        method='GET',
+        endpoint='/api/v1/manage/prometheus/status',
+    )
+    return result
+
+
+@router.get("/manager/settings", status_code=status.HTTP_200_OK)
+async def get_prometheus_settings() -> Dict[str, Any]:
+    """
+    Получает настройки Prometheus из Prometheus Manager сервиса.
+    """
+    api_gateway = get_prometheus_manager_gateway()
+    result = api_gateway.make_request(
+        method='GET',
+        endpoint='/api/v1/manage/prometheus/settings',
+    )
+    return result
+
+
+@router.post("/manager/settings", status_code=status.HTTP_200_OK)
+async def update_prometheus_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Обновляет настройки Prometheus через Prometheus Manager сервис.
+    """
+    api_gateway = get_prometheus_manager_gateway()
+    result = api_gateway.make_request(
+        method='POST',
+        endpoint='/api/v1/manage/prometheus/settings',
+        json_data=settings
+    )
+    return result
+
+
+@router.post("/manager/config/update", status_code=status.HTTP_200_OK)
+async def update_prometheus_config() -> Dict[str, Any]:
+    """
+    Обновляет конфигурацию Prometheus (prometheus.yml и targets) из MinIO
+    через Prometheus Manager сервис.
+    """
+    api_gateway = get_prometheus_manager_gateway()
+    result = api_gateway.make_request(
+        method='POST',
+        endpoint='/api/v1/manage/config/update',
     )
     return result

@@ -1,7 +1,18 @@
 <template>
   <div class="prometheus-view">
     <div class="header-section">
-      <h1 class="page-title">Prometheus Configs</h1>
+      <div>
+        <h1 class="page-title">Prometheus Configs</h1>
+        <p class="page-subtitle" v-if="managerStatusText">
+          Prometheus status:
+          <span
+            class="badge"
+            :class="managerStatusBadgeClass"
+          >
+            {{ managerStatusText }}
+          </span>
+        </p>
+      </div>
       <div class="header-actions">
         <button @click="loadMainConfig" class="btn btn-primary" :disabled="loadingMainConfig">
           <span v-if="loadingMainConfig" class="loading"></span>
@@ -10,6 +21,38 @@
         <button @click="loadConfigs" class="btn btn-primary" :disabled="loading">
           <span v-if="loading" class="loading"></span>
           <span v-else>Refresh Services</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="manager-panel">
+      <h2 class="panel-title">Prometheus Manager</h2>
+      <div class="manager-controls">
+        <button @click="refreshManagerStatus" class="btn btn-secondary" :disabled="loadingManager">
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Refresh Status</span>
+        </button>
+        <button
+          v-if="isManagerRunning"
+          @click="stopManager"
+          class="btn btn-danger"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Stop Prometheus</span>
+        </button>
+        <button
+          v-else
+          @click="startManager"
+          class="btn btn-success"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Start Prometheus</span>
+        </button>
+        <button @click="updateManagerConfig" class="btn btn-secondary" :disabled="updatingConfig">
+          <span v-if="updatingConfig" class="loading"></span>
+          <span v-else>Update Config Files</span>
         </button>
       </div>
     </div>
@@ -167,7 +210,7 @@
                         @click="addToMainConfig(config)" 
                         class="btn btn-sm btn-success"
                         :disabled="loadingActions[config.config_id]"
-                        title="Add to main config"
+                        :title="config.exporter.running ? 'Add to main config' : 'Warning: Exporter may not be running. Click to try anyway.'"
                       >
                         <span v-if="loadingActions[config.config_id]" class="loading"></span>
                         <span v-else>Add</span>
@@ -234,6 +277,20 @@
         </div>
       </div>
     </div>
+
+    <!-- Confirm Dialog -->
+    <ConfirmDialog
+      v-if="confirmDialogOptions"
+      :visible="showConfirmDialog"
+      :title="confirmDialogOptions.title"
+      :message="confirmDialogOptions.message"
+      :details="confirmDialogOptions.details"
+      :confirm-text="confirmDialogOptions.confirmText"
+      :cancel-text="confirmDialogOptions.cancelText"
+      :type="confirmDialogOptions.type"
+      @confirm="handleConfirmDialogConfirm"
+      @cancel="handleConfirmDialogCancel"
+    />
   </div>
 </template>
 
@@ -241,6 +298,7 @@
 import { ref, onMounted, computed } from 'vue'
 import yaml from 'js-yaml'
 import CodeBlock from '../components/CodeBlock.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { showToast } from '../utils/toast'
 import { 
   prometheusApi, 
@@ -261,6 +319,21 @@ const loadingFiles = ref<number | null>(null)
 const loadingActions = ref<Record<number, boolean>>({})
 const showModal = ref(false)
 const configFiles = ref<PrometheusConfigFiles | null>(null)
+const loadingManager = ref(false)
+const updatingConfig = ref(false)
+const managerStatus = ref<any | null>(null)
+
+// Confirm dialog state
+const showConfirmDialog = ref(false)
+const confirmDialogOptions = ref<{
+  title: string
+  message: string
+  details?: string
+  confirmText: string
+  cancelText: string
+  type: 'warning' | 'danger' | 'info'
+  onConfirm: () => void
+} | null>(null)
 
 // Expanded sections state
 const expandedSections = ref({
@@ -304,6 +377,92 @@ const updateMainConfigJobNames = () => {
   )
 }
 
+const refreshManagerStatus = async () => {
+  try {
+    loadingManager.value = true
+    managerStatus.value = await prometheusApi.getManagerStatus()
+  } catch (error: any) {
+    console.error('Failed to load Prometheus status:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to load Prometheus status', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const startManager = async () => {
+  try {
+    loadingManager.value = true
+    const result = await prometheusApi.startManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Prometheus started', 'success')
+  } catch (error: any) {
+    console.error('Failed to start Prometheus:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to start Prometheus', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const stopManager = async () => {
+  try {
+    loadingManager.value = true
+    const result = await prometheusApi.stopManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Prometheus stopped', 'success')
+  } catch (error: any) {
+    console.error('Failed to stop Prometheus:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to stop Prometheus', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const updateManagerConfig = async () => {
+  try {
+    updatingConfig.value = true
+    const result = await prometheusApi.updateManagerConfig()
+    showToast(result?.message || 'Config files updated', 'success')
+    await loadMainConfig()
+  } catch (error: any) {
+    console.error('Failed to update config files:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to update config files', 'error')
+  } finally {
+    updatingConfig.value = false
+  }
+}
+
+const managerStatusText = computed(() => {
+  if (!managerStatus.value) return ''
+  if (typeof managerStatus.value === 'string') return managerStatus.value
+  if (managerStatus.value.status) {
+    if (typeof managerStatus.value.status === 'string') return managerStatus.value.status
+    if (managerStatus.value.status.status) return managerStatus.value.status.status
+  }
+  try {
+    return JSON.stringify(managerStatus.value)
+  } catch {
+    return String(managerStatus.value)
+  }
+})
+
+const isManagerRunning = computed(() => {
+  const text = managerStatusText.value.toLowerCase()
+  if (!text) return false
+  return text.includes('running') || text.includes('up')
+})
+
+const managerStatusBadgeClass = computed(() => {
+  const text = managerStatusText.value.toLowerCase()
+  if (!text) return 'badge-secondary'
+  if (text.includes('running') || text.includes('up')) {
+    return 'badge-success'
+  }
+  if (text.includes('not found') || text.includes('down') || text.includes('stopped')) {
+    return 'badge-danger'
+  }
+  return 'badge-secondary'
+})
+
 const loadHosts = async () => {
   try {
     hosts.value = await hostsApi.getHosts()
@@ -340,14 +499,55 @@ const loadMainConfig = async () => {
 }
 
 const addToMainConfig = async (config: PrometheusConfigInfo) => {
+  // Показываем предупреждение, если экспортер не запущен
+  if (!config.exporter.running) {
+    confirmDialogOptions.value = {
+      title: 'Warning: Exporter Not Running',
+      message: `Exporter for "${config.container_name}" appears to be not running.`,
+      details: 'Do you want to continue adding this service to the main Prometheus config anyway? The exporter should be running for Prometheus to scrape metrics.',
+      confirmText: 'Continue Anyway',
+      cancelText: 'Cancel',
+      type: 'warning',
+      onConfirm: () => {
+        showConfirmDialog.value = false
+        performAddToMainConfig(config)
+      }
+    }
+    showConfirmDialog.value = true
+    return
+  }
+  
+  performAddToMainConfig(config)
+}
+
+const performAddToMainConfig = async (config: PrometheusConfigInfo) => {
   loadingActions.value[config.config_id] = true
   try {
+    // Извлекаем данные из конфига
     const metadata = config.config_metadata || {}
     const info = metadata.info || {}
     
     const jobName = info.job_name || config.job_name
     const targetAddress = info.target_address || config.target_address
     const exporterPort = info.exporter_port || config.exporter_port
+
+    // Валидация обязательных полей
+    if (!jobName) {
+      throw new Error('Job name is missing')
+    }
+    if (!targetAddress) {
+      throw new Error('Target address is missing')
+    }
+    if (!exporterPort) {
+      throw new Error('Exporter port is missing')
+    }
+
+    console.log('Adding service to main config:', {
+      jobName,
+      targetAddress,
+      exporterPort,
+      configId: config.config_id
+    })
 
     const scrapeConfig: AddServiceRequest = {
       scrape_config: {
@@ -367,15 +567,96 @@ const addToMainConfig = async (config: PrometheusConfigInfo) => {
       target_name: `${jobName}.yml`
     }
 
+    console.log('Sending request:', JSON.stringify(scrapeConfig, null, 2))
+
     await prometheusApi.addServiceToMainConfig(scrapeConfig)
     await loadMainConfig()
     showToast('Service added to main config successfully', 'success')
   } catch (error: any) {
     console.error('Failed to add service to main config:', error)
-    showToast(error.response?.data?.detail || error.message || 'Failed to add service to main config', 'error')
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response,
+      request: error.config
+    })
+    
+    // Обработка network errors
+    if (error.code === 'ERR_NETWORK' || 
+        error.message?.includes('Network Error') || 
+        error.message?.includes('network') ||
+        !error.response) {
+      showToast(
+        'Network error: Could not connect to the server. Please check your connection and try again.',
+        'error',
+        6000
+      )
+      return
+    }
+    
+    // Обработка ошибок от сервера
+    let errorDetail = 'Failed to add service to main config'
+    
+    if (error.response) {
+      const status = error.response.status
+      
+      if (error.response.data) {
+        if (typeof error.response.data === 'string') {
+          errorDetail = error.response.data
+        } else if (error.response.data.detail) {
+          errorDetail = error.response.data.detail
+        } else if (error.response.data.message) {
+          errorDetail = error.response.data.message
+        }
+      }
+      
+      // Специфичные сообщения для разных статусов
+      if (status === 503) {
+        if (errorDetail.includes('PROMETHEUS_GENERATION_URL')) {
+          errorDetail = 'Prometheus Generation service URL is not configured. Please check server configuration.'
+        } else if (errorDetail.includes('Cannot connect')) {
+          errorDetail = 'Cannot connect to Prometheus Generation service. Please check if the service is running.'
+        } else {
+          errorDetail = 'Service unavailable. Please check if Prometheus Generation service is running.'
+        }
+      } else if (status === 504) {
+        errorDetail = 'Request timeout. The Prometheus Generation service took too long to respond.'
+      } else if (status === 500) {
+        if (!errorDetail || errorDetail === 'Failed to add service to main config') {
+          errorDetail = 'Internal server error. Please check server logs for details.'
+        }
+      }
+    } else if (error.message) {
+      errorDetail = error.message
+    }
+    
+    // Показываем понятное сообщение об ошибке
+    if (errorDetail.toLowerCase().includes('exporter') && 
+        (errorDetail.toLowerCase().includes('not found') || errorDetail.toLowerCase().includes('not running'))) {
+      showToast(
+        `Cannot add service: ${errorDetail}. Please start the exporter first.`,
+        'error',
+        6000
+      )
+    } else {
+      showToast(errorDetail, 'error', 5000)
+    }
   } finally {
     loadingActions.value[config.config_id] = false
   }
+}
+
+const handleConfirmDialogConfirm = () => {
+  if (confirmDialogOptions.value?.onConfirm) {
+    confirmDialogOptions.value.onConfirm()
+  }
+  showConfirmDialog.value = false
+  confirmDialogOptions.value = null
+}
+
+const handleConfirmDialogCancel = () => {
+  showConfirmDialog.value = false
+  confirmDialogOptions.value = null
 }
 
 const removeFromMainConfig = async (config: PrometheusConfigInfo) => {
@@ -480,6 +761,7 @@ onMounted(() => {
   loadHosts()
   loadConfigs()
   loadMainConfig()
+  refreshManagerStatus()
 })
 </script>
 
@@ -495,6 +777,34 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.page-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.status-text {
+  font-weight: 500;
+}
+
+.manager-panel {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manager-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .header-actions {

@@ -149,9 +149,33 @@
                 <span v-else class="text-gray">-</span>
               </td>
               <td>
-                <span v-if="data.has_prometheus_config" class="badge badge-success" title="Prometheus config generated">
-                  ✓ Config
-                </span>
+                <div v-if="data.prometheus_config" class="prometheus-info">
+                  <div class="prometheus-status-row">
+                    <span 
+                      :class="['badge', data.prometheus_config.status === 'active' ? 'badge-success' : 'badge-warning']"
+                      :title="`Config status: ${data.prometheus_config.status}`"
+                    >
+                      {{ data.prometheus_config.status === 'active' ? '✓ Config' : '⚠ Config' }}
+                    </span>
+                    <span 
+                      v-if="data.prometheus_config.exporter.exists"
+                      :class="['badge', data.prometheus_config.exporter.running ? 'badge-success' : 'badge-error']"
+                      :title="`Exporter ${data.prometheus_config.exporter.running ? 'running' : 'stopped'}`"
+                    >
+                      {{ data.prometheus_config.exporter.running ? '✓ Exporter' : '✗ Exporter' }}
+                    </span>
+                    <span 
+                      v-else
+                      class="badge badge-secondary"
+                      title="Exporter not found"
+                    >
+                      - Exporter
+                    </span>
+                  </div>
+                  <div v-if="data.prometheus_config.stack" class="prometheus-stack">
+                    <span class="text-xs text-gray">{{ data.prometheus_config.stack }}</span>
+                  </div>
+                </div>
                 <span v-else class="text-gray">-</span>
               </td>
               <td class="text-xs text-gray id-column-cell">{{ id.substring(0, 12) }}</td>
@@ -533,12 +557,12 @@ const handleBulkRemove = async () => {
 const handleBulkGenerateConfig = async () => {
   if (selectedContainers.value.size === 0) return
   
-  if (!confirm(`Generate Prometheus config for ${selectedContainers.value.size} container(s)?`)) {
+  if (!confirm(`Generate Prometheus config for ${selectedContainers.value.size} container(s)?\n\nNote: Exporters must be running for each container.`)) {
     return
   }
 
   bulkActionLoading.value = true
-  const results = { success: 0, failed: 0, errors: [] as string[] }
+  const results = { success: 0, failed: 0, errors: [] as string[], exporterErrors: [] as string[] }
 
   for (const id of selectedContainers.value) {
     try {
@@ -553,7 +577,16 @@ const handleBulkGenerateConfig = async () => {
       results.success++
     } catch (error: any) {
       results.failed++
-      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed'
+      const errorMsg = `${id}: ${errorDetail}`
+      results.errors.push(errorMsg)
+      
+      // Track exporter-specific errors separately
+      if (errorDetail.toLowerCase().includes('exporter') && 
+          (errorDetail.toLowerCase().includes('not found') || errorDetail.toLowerCase().includes('not running'))) {
+        const containerName = containers.value[id]?.info?.Name?.replace(/^\//, '') || id.substring(0, 12)
+        results.exporterErrors.push(containerName)
+      }
     }
   }
 
@@ -561,8 +594,17 @@ const handleBulkGenerateConfig = async () => {
   await loadContainers()
   clearSelection()
   
-  const message = `Config generated: ${results.success}, Failed: ${results.failed}${results.errors.length > 0 ? '\n\nErrors:\n' + results.errors.slice(0, 5).join('\n') : ''}`
-  showToast(message, results.failed > 0 ? 'warning' : 'success', 7000)
+  let message = `Config generated: ${results.success}, Failed: ${results.failed}`
+  
+  if (results.exporterErrors.length > 0) {
+    message += `\n\n${results.exporterErrors.length} container(s) need exporter started:\n${results.exporterErrors.slice(0, 5).join(', ')}${results.exporterErrors.length > 5 ? '...' : ''}`
+  }
+  
+  if (results.errors.length > 0 && results.exporterErrors.length === 0) {
+    message += `\n\nErrors:\n${results.errors.slice(0, 5).join('\n')}`
+  }
+  
+  showToast(message, results.failed > 0 ? 'warning' : 'success', 8000)
 }
 
 const handleBulkStartExporter = async () => {
@@ -804,5 +846,37 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.prometheus-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prometheus-status-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.prometheus-stack {
+  margin-top: 2px;
+}
+
+.badge-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.badge-warning {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.text-xs {
+  font-size: 11px;
 }
 </style>

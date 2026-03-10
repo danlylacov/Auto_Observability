@@ -53,9 +53,30 @@
               <span class="meta-label">Stack</span>
               <span class="meta-value badge badge-info">{{ stack }}</span>
             </div>
-            <div class="meta-item" v-if="hasPrometheusConfig">
+            <div class="meta-item" v-if="prometheusConfig">
               <span class="meta-label">Prometheus</span>
-              <span class="meta-value badge badge-success">Config Generated</span>
+              <div class="prometheus-meta-values">
+                <span 
+                  :class="['badge', prometheusConfig.status === 'active' ? 'badge-success' : 'badge-warning']"
+                  :title="`Config status: ${prometheusConfig.status}`"
+                >
+                  {{ prometheusConfig.status === 'active' ? '✓ Config' : '⚠ Config' }}
+                </span>
+                <span 
+                  v-if="prometheusConfig.exporter.exists"
+                  :class="['badge', prometheusConfig.exporter.running ? 'badge-success' : 'badge-error']"
+                  :title="`Exporter ${prometheusConfig.exporter.running ? 'running' : 'stopped'}`"
+                >
+                  {{ prometheusConfig.exporter.running ? '✓ Exporter' : '✗ Exporter' }}
+                </span>
+                <span 
+                  v-else
+                  class="badge badge-secondary"
+                  title="Exporter not found"
+                >
+                  - Exporter
+                </span>
+              </div>
             </div>
             <div class="meta-item">
               <span class="meta-label">Container ID</span>
@@ -236,6 +257,10 @@ const stack = computed(() => {
 
 const hasPrometheusConfig = computed(() => {
   return containerData.value?.has_prometheus_config === true
+})
+
+const prometheusConfig = computed(() => {
+  return containerData.value?.prometheus_config || null
 })
 
 const created = computed(() => {
@@ -516,6 +541,24 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.prometheus-meta-values {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.badge-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.badge-warning {
+  background-color: #f59e0b;
+  color: white;
 }
 
 .hero-info {
