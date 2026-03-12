@@ -5,3 +5,8 @@ venv
 api_agregator/celerybeat-schedule.db
 .env
 .cursor
+
+# Local development files
+.dev-pids
+.dev-logs/
+**/.env.dev

@@ -50,11 +50,33 @@
           <span v-if="loadingManager" class="loading"></span>
           <span v-else>Start Prometheus</span>
         </button>
-        <button @click="updateManagerConfig" class="btn btn-secondary" :disabled="updatingConfig">
-          <span v-if="updatingConfig" class="loading"></span>
-          <span v-else>Update Config Files</span>
-        </button>
+        <a 
+          :href="prometheusUrl" 
+          target="_blank" 
+          class="btn btn-primary"
+          title="Open Prometheus UI"
+        >
+          Go to Prometheus
+        </a>
       </div>
+    </div>
+
+    <div class="restart-notification" :class="{ 'restart-needed': configUpdated, 'restart-ok': !configUpdated }">
+      <div class="restart-message">
+        <span v-if="configUpdated" class="restart-icon">⚠</span>
+        <span v-else class="restart-icon-success">✓</span>
+        <span v-if="configUpdated">To apply changes, Prometheus needs to be restarted</span>
+        <span v-else>No restart needed</span>
+      </div>
+      <button 
+        v-if="configUpdated"
+        @click="restartManager" 
+        class="btn btn-warning" 
+        :disabled="loadingManager"
+      >
+        <span v-if="loadingManager" class="loading"></span>
+        <span v-else>Restart Prometheus</span>
+      </button>
     </div>
 
     <div class="content-layout">
@@ -320,8 +342,28 @@ const loadingActions = ref<Record<number, boolean>>({})
 const showModal = ref(false)
 const configFiles = ref<PrometheusConfigFiles | null>(null)
 const loadingManager = ref(false)
-const updatingConfig = ref(false)
 const managerStatus = ref<any | null>(null)
+
+// Prometheus URL - can be configured via env or defaults to localhost:9090
+const prometheusUrl = ref(import.meta.env.VITE_PROMETHEUS_URL || 'http://localhost:9090')
+
+// Load configUpdated state from localStorage
+const configUpdated = ref(false)
+const CONFIG_UPDATED_KEY = 'prometheus_config_updated'
+
+// Load state from localStorage on mount
+const loadConfigUpdatedState = () => {
+  const saved = localStorage.getItem(CONFIG_UPDATED_KEY)
+  if (saved === 'true') {
+    configUpdated.value = true
+  }
+}
+
+// Save state to localStorage
+const saveConfigUpdatedState = (value: boolean) => {
+  configUpdated.value = value
+  localStorage.setItem(CONFIG_UPDATED_KEY, String(value))
+}
 
 // Confirm dialog state
 const showConfirmDialog = ref(false)
@@ -419,15 +461,36 @@ const stopManager = async () => {
 
 const updateManagerConfig = async () => {
   try {
-    updatingConfig.value = true
     const result = await prometheusApi.updateManagerConfig()
-    showToast(result?.message || 'Config files updated', 'success')
     await loadMainConfig()
+    saveConfigUpdatedState(true)
+    return result
   } catch (error: any) {
     console.error('Failed to update config files:', error)
     showToast(error.response?.data?.detail || error.message || 'Failed to update config files', 'error')
+    throw error
+  }
+}
+
+const restartManager = async () => {
+  try {
+    loadingManager.value = true
+    // Stop first
+    if (isManagerRunning.value) {
+      await prometheusApi.stopManager()
+      // Wait a bit for stop to complete
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    // Then start
+    const result = await prometheusApi.startManager()
+    await refreshManagerStatus()
+    saveConfigUpdatedState(false)
+    showToast(result?.message || 'Prometheus restarted successfully', 'success')
+  } catch (error: any) {
+    console.error('Failed to restart Prometheus:', error)
+    showToast(error.response?.data?.detail || error.message || 'Failed to restart Prometheus', 'error')
   } finally {
-    updatingConfig.value = false
+    loadingManager.value = false
   }
 }
 
@@ -570,7 +633,7 @@ const performAddToMainConfig = async (config: PrometheusConfigInfo) => {
     console.log('Sending request:', JSON.stringify(scrapeConfig, null, 2))
 
     await prometheusApi.addServiceToMainConfig(scrapeConfig)
-    await loadMainConfig()
+    await updateManagerConfig()
     showToast('Service added to main config successfully', 'success')
   } catch (error: any) {
     console.error('Failed to add service to main config:', error)
@@ -671,7 +734,7 @@ const removeFromMainConfig = async (config: PrometheusConfigInfo) => {
       job_name: jobName,
       target_name: `${jobName}.yml`
     })
-    await loadMainConfig()
+    await updateManagerConfig()
     showToast('Service removed from main config successfully', 'success')
   } catch (error: any) {
     console.error('Failed to remove service from main config:', error)
@@ -758,6 +821,7 @@ const formatYaml = (content: any): string => {
 }
 
 onMounted(() => {
+  loadConfigUpdatedState()
   loadHosts()
   loadConfigs()
   loadMainConfig()
@@ -1223,5 +1287,65 @@ onMounted(() => {
   gap: 8px;
   padding: 20px;
   border-top: 1px solid var(--border);
+}
+
+.restart-notification {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  gap: 12px;
+  transition: all 0.3s ease;
+}
+
+.restart-notification.restart-needed {
+  border: 1px solid var(--warning-border, #ffc107);
+  background: var(--warning-bg, #fff3cd);
+}
+
+.restart-notification.restart-ok {
+  border: 1px solid var(--success-border-light, rgba(40, 167, 69, 0.4));
+  background: var(--success-bg-light, rgba(212, 237, 218, 0.7));
+  padding: 6px 10px;
+}
+
+.restart-message {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  flex: 1;
+}
+
+.restart-notification.restart-needed .restart-message {
+  color: var(--warning-text, #856404);
+}
+
+.restart-notification.restart-ok .restart-message {
+  color: var(--success-text, #155724);
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.restart-icon {
+  font-size: 18px;
+}
+
+.restart-icon-success {
+  font-size: 18px;
+  color: var(--success-text, #28a745);
+}
+
+.btn-warning {
+  background: var(--warning-bg, #ffc107);
+  color: var(--warning-text, #856404);
+  border-color: var(--warning-border, #ffc107);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--warning-hover, #e0a800);
+  border-color: var(--warning-hover, #e0a800);
 }
 </style>
