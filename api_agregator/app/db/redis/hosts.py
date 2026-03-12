@@ -75,11 +75,20 @@ class Hosts(RedisConnection):
         Returns:
             int: Количество удаленных ключей
         """
-        pattern = f"host:{host_id}:*" if host_id else "host:*"
-        container_keys = self.client.keys(pattern)
-        if not container_keys:
-            logger.debug("Хосты не найдены")
-            return 0
-        deleted_count = self.client.delete(*container_keys)
-        return deleted_count
+        if host_id:
+            # Удаляем конкретный хост по точному ключу
+            key = f"host:{host_id}"
+            deleted_count = self.client.delete(key)
+            logger.debug(f"Deleted host key: {key}, count: {deleted_count}")
+            return deleted_count
+        else:
+            # Удаляем все хосты
+            pattern = "host:*"
+            container_keys = self.client.keys(pattern)
+            if not container_keys:
+                logger.debug("Хосты не найдены")
+                return 0
+            deleted_count = self.client.delete(*container_keys)
+            logger.debug(f"Deleted all hosts, count: {deleted_count}")
+            return deleted_count
 

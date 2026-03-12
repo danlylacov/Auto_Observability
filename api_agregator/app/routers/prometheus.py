@@ -91,115 +91,8 @@ async def generate_config(
     if classification.get("result"):
         stack = classification["result"][0][0] if classification["result"] else None
 
-    exporter_name = f"{container_name}-exporter"
-    exporter_name_lower = exporter_name.lower()
-    all_containers_data = docker_containers.get_containers()
-
-    exporter_found = False
-    exporter_running = False
-    exporter_info = None
-
     logger.info(
-        "Checking exporter before config generation: exporter_name=%s, "
-        "host_id=%s",
-        exporter_name, host_id
-    )
-
-    for exp_container_id, exp_container_data in all_containers_data.items():
-        if isinstance(exp_container_data, dict):
-            exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
-            exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
-
-            if (exp_container_name.lower() == exporter_name_lower and
-                    exp_container_host == host_id):
-                exp_container_status = (
-                    exp_container_data.get("info", {})
-                    .get("State", {})
-                    .get("Status", "")
-                )
-                exporter_found = True
-                exporter_running = exp_container_status.lower() in ("running", "up")
-
-                exporter_info = {
-                    "container_id": exp_container_id,
-                    "name": exp_container_name,
-                    "status": exp_container_status,
-                    "image": exp_container_data.get("info", {}).get("Config", {}).get("Image", ""),
-                }
-
-                logger.info(
-                    "Found exporter: name=%s, host=%s, "
-                    "status=%s, running=%s",
-                    exp_container_name, exp_container_host,
-                    exp_container_status, exporter_running
-                )
-                break
-
-    if not exporter_found:
-        logger.debug("Exporter not found with exact host match, trying fallback search by name only")
-        for exp_container_id, exp_container_data in all_containers_data.items():
-            if isinstance(exp_container_data, dict):
-                exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
-                exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
-
-                if exp_container_name.lower() == exporter_name_lower:
-                    exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
-                    exporter_found = True
-                    exporter_running = exp_container_status.lower() in ("running", "up")
-
-                    exporter_info = {
-                        "container_id": exp_container_id,
-                        "name": exp_container_name,
-                        "status": exp_container_status,
-                        "image": exp_container_data.get("info", {}).get("Config", {}).get("Image", ""),
-                    }
-
-                    logger.warning(
-                        "Found exporter using fallback search: name=%s, "
-                        "host=%s (expected: %s), status=%s, running=%s",
-                        exp_container_name, exp_container_host,
-                        host_id, exp_container_status, exporter_running
-                    )
-                    break
-
-    if not exporter_found:
-        logger.warning(
-            "Exporter '%s' not found on host '%s'",
-            exporter_name, host_id
-        )
-        all_exporters = [
-            (data.get("info", {}).get("Name", "").lstrip("/"),
-             data.get("host_name") or data.get("host_id"))
-            for data in all_containers_data.values()
-            if (isinstance(data, dict) and
-                "-exporter" in data.get("info", {}).get("Name", "").lower())
-        ]
-        logger.debug("Available exporters: %s", all_exporters)
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Exporter '{exporter_name}' not found on host '{host_id}'. "
-                f"Please start the exporter first using /api/v1/prometheus/up_exporter endpoint."
-            )
-        )
-
-    if not exporter_running:
-        exporter_status = exporter_info.get('status', 'unknown') if exporter_info else 'unknown'
-        logger.warning(
-            f"Exporter '{exporter_name}' found but not running. Status: {exporter_status}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"Exporter '{exporter_name}' is not running (status: {exporter_status}). "
-                f"Please start the exporter first."
-            )
-        )
-
-    logger.info(
-        "Exporter check passed. Proceeding with config generation "
-        "for container %s",
+        "Proceeding with config generation for container %s (exporter will be started later)",
         container_id
     )
 
@@ -331,17 +224,39 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
         }
 
     config_metadata = config.config_metadata or {}
-    host_name = config_metadata.get('host_name', 'localhost')
+    host_id = config_metadata.get('host_name', 'localhost')
 
-    docker_containers = DockerContainers()
-    container_data = docker_containers.get_container(container_id, host_name)
-
-    if not container_data:
-        logger.error("Target container %s not found in Redis", container_id)
+    # Получаем адрес хоста для обращения к docker_api
+    hosts_service = HostsService(db)
+    host_dto = hosts_service.get_host_by_id(host_id)
+    if not host_dto:
+        logger.error("Host %s not found", host_id)
         return {
-            "error": "Target container not found in Redis. Please update containers first.",
+            "error": f"Host {host_id} not found",
             "container_id": container_id
         }
+    
+    # Преобразуем адрес хоста для Docker (localhost -> host.docker.internal)
+    host_address = hosts_service._resolve_host_for_docker(host_dto.host)
+    docker_api_host_url = f"http://{host_address}:{host_dto.port}"
+
+    docker_containers = DockerContainers()
+    container_data = docker_containers.get_container(container_id, host_id)
+
+    # Если не найден с host_id, пробуем найти без фильтра по хосту
+    if not container_data:
+        logger.warning("Container %s not found with host_id %s, trying to find without host filter", container_id, host_id)
+        all_containers = docker_containers.get_containers()
+        container_data = all_containers.get(container_id)
+        
+        if container_data:
+            logger.info("Container found without host filter, using it")
+        else:
+            logger.error("Target container %s not found in Redis at all", container_id)
+            return {
+                "error": "Target container not found in Redis. Please update containers first.",
+                "container_id": container_id
+            }
 
     exporter_info = config_metadata.get('info', {})
 
@@ -407,7 +322,9 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
         )
 
     try:
-        api_gateway = APIGateway(docker_api_url)
+        # Используем адрес хоста вместо глобального DOCKER_API_URL
+        api_gateway = APIGateway(docker_api_host_url)
+        logger.info("Using docker_api at %s for host %s", docker_api_host_url, host_id)
         start_exporter = api_gateway.make_request(
             method='POST',
             endpoint='/api/v1/manage/container/pull_and_run',
@@ -838,7 +755,8 @@ async def get_main_config() -> Dict[str, Any]:
     Получает полный конфиг Prometheus и все файлы targets.
 
     Returns:
-        Dict[str, Any]: Полный конфиг Prometheus и файлы targets
+        Dict[str, Any]: Полный конфиг Prometheus и файлы targets.
+                       Если конфиг еще не создан, возвращает пустую структуру.
 
     Raises:
         HTTPException: Если PROMETHEUS_GENERATION_URL не настроен или произошла ошибка
@@ -855,17 +773,31 @@ async def get_main_config() -> Dict[str, Any]:
             endpoint='/api/v1/main-config/'
         )
         return result
-    except HTTPException:
+    except HTTPException as e:
+        # Если конфиг не найден (404 или 500 с NoSuchKey), возвращаем пустую структуру
+        if "NoSuchKey" in str(e.detail) or "does not exist" in str(e.detail):
+            return {
+                'main_config': None,
+                'targets': {}
+            }
         raise
     except Exception as e:
+        # Если конфиг не найден, возвращаем пустую структуру вместо ошибки
+        error_str = str(e)
+        if "NoSuchKey" in error_str or "does not exist" in error_str:
+            logger.info("Main config not found, returning empty structure")
+            return {
+                'main_config': None,
+                'targets': {}
+            }
         logger.error(
             "Error getting main config: %s",
-            str(e),
+            error_str,
             exc_info=True
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get main config: {str(e)}"
+            detail=f"Failed to get main config: {error_str}"
         )
 
 

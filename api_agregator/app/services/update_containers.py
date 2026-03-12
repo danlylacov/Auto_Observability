@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from typing import Any, Dict
@@ -109,14 +110,23 @@ class UpdateContainers:
         result: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
         for host_id, host_data in hosts.items():
-            docker_api = APIGateway(f'http://{host_data["host"]}:{host_data["port"]}')
+            # Преобразуем localhost в host.docker.internal для Docker
+            host = host_data["host"]
+            if os.path.exists('/.dockerenv'):
+                if host in ('localhost', '127.0.0.1', '0.0.0.0'):
+                    host = 'host.docker.internal'
+            
+            docker_api = APIGateway(f'http://{host}:{host_data["port"]}')
+            # Уменьшаем таймаут для запросов к хостам, чтобы не зависать
+            docker_api.timeout = 5
 
             try:
                 response = docker_api.make_request(
                     method="POST",
                     endpoint="/api/v1/discover/",
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to get containers from host {host_id} ({host}:{host_data['port']}): {e}")
                 continue
 
             containers = response.get("containers", [])
@@ -149,10 +159,66 @@ class UpdateContainers:
         Обновление информации о контейнерах в Redis.
 
         Получает данные о всех контейнерах со всех хостов и сохраняет их в Redis.
+        Использует атомарную операцию для предотвращения race conditions:
+        1. Сначала загружаем все новые контейнеры
+        2. Затем удаляем только те старые, которых нет в новых данных
+        
+        Важно: Если не удалось получить контейнеры с хостов (ошибка подключения),
+        старые контейнеры НЕ удаляются, чтобы избежать потери данных.
         """
         all_containers_by_host = self._get_all_hosts_containers()
         docker_containers = DockerContainers()
-        docker_containers.delete_all_containers_by_host()
+        
+        logger.info(f"Updating containers for {len(all_containers_by_host)} hosts")
+        
+        # Проверяем, есть ли хосты с контейнерами
+        total_containers_count = sum(len(containers) for containers in all_containers_by_host.values())
+        
+        if total_containers_count == 0:
+            logger.warning(
+                "No containers received from any host. "
+                "This might indicate connection issues. "
+                "Keeping existing containers in Redis to prevent data loss."
+            )
+            return
+        
+        # Собираем множество новых ключей для проверки
+        new_keys = set()
+        pipe = docker_containers.client.pipeline()
+        total_containers = 0
+        
+        # Сначала загружаем все новые контейнеры
         for host_id, containers in all_containers_by_host.items():
-            docker_containers.upload_containers(containers, host_id)
+            logger.debug(f"Processing {len(containers)} containers for host {host_id}")
+            for container_id, data in containers.items():
+                if isinstance(data, dict):
+                    data.setdefault("host_name", host_id)
+                key = f"container:{host_id}:{container_id}"
+                new_keys.add(key)
+                pipe.set(key, json.dumps(data))
+                total_containers += 1
+        
+        # Выполняем загрузку новых контейнеров
+        if new_keys:
+            try:
+                pipe.execute()
+                logger.info(f"Loaded {len(new_keys)} new containers into Redis (total: {total_containers})")
+            except Exception as e:
+                logger.error(f"Error loading containers into Redis: {e}", exc_info=True)
+                raise
+        
+        # Удаляем только те старые контейнеры, которых нет в новых данных
+        # Только если мы успешно загрузили новые контейнеры
+        if new_keys:
+            old_keys = docker_containers.client.keys("container:*")
+            # Преобразуем bytes в строки для сравнения
+            old_keys_str = {
+                k.decode('utf-8') if isinstance(k, bytes) else k 
+                for k in old_keys
+            }
+            keys_to_delete = list(old_keys_str - new_keys)
+            
+            if keys_to_delete:
+                deleted_count = docker_containers.client.delete(*keys_to_delete)
+                logger.info(f"Deleted {deleted_count} old containers that are no longer present")
 

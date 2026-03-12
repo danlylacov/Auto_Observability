@@ -34,9 +34,20 @@ async def add_host(name: str, host: str, port: int, db: Session = Depends(get_db
         db.refresh(host_config)
 
         hosts_service = HostsService(db)
-        hosts_service.upload_hosts()
+        status = hosts_service.check_host_status(host_config.id, host_config.host, host_config.port)
+
+        host_data = {
+            'name': host_config.name,
+            'host': host_config.host,
+            'port': host_config.port,
+            'status': status
+        }
+        hosts_service.redis_hosts.upload_hosts({host_config.id: host_data})
+        
         return {"message": "Host added successfully"}
     except Exception as e:
+        logger.error(f"Error adding host: {e}", exc_info=True)
+        db.rollback()
         return {"message": str(e)}
 
 
@@ -96,7 +107,7 @@ async def update_host(
         db.refresh(db_host)
 
         hosts_service = HostsService(db)
-        hosts_service.upload_hosts()
+        hosts_service.add_host_to_redis(db_host.id, db_host.name, db_host.host, db_host.port)
         return {"message": "Host updated successfully"}
     except Exception as e:
         return {"message": str(e)}
@@ -125,10 +136,12 @@ async def delete_host(
         if not db_host:
             raise HTTPException(status_code=404, detail="Host not found")
 
+        hosts_service = HostsService(db)
+        hosts_service.redis_hosts.delete_hosts(host_id)
+
         db.delete(db_host)
         db.commit()
 
-        hosts_service = HostsService(db)
         hosts_service.upload_hosts()
         return {"message": "Host deleted successfully"}
     except HTTPException:

@@ -10,10 +10,22 @@ logger = logging.getLogger(__name__)
 class PrometheusManager:
     def __init__(self, config_path: str = None):
         self.client = docker.from_env()
-        if config_path is None:
-            config_path = os.path.join(os.path.dirname(__file__), 'prometheus', 'prometheus.yml')
-        self.config_path = os.path.abspath(config_path)
-        self.config_dir = os.path.dirname(self.config_path)
+
+        host_config_path = os.environ.get('PROMETHEUS_CONFIG_HOST_PATH')
+        if host_config_path:
+            logger.info(f"Using PROMETHEUS_CONFIG_HOST_PATH from environment: {host_config_path}")
+            self.config_dir = host_config_path
+            self.config_path = os.path.join(host_config_path, 'prometheus.yml')
+        elif config_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(current_dir, 'prometheus', 'prometheus.yml')
+            self.config_path = os.path.abspath(config_path)
+            self.config_dir = os.path.dirname(self.config_path)
+        else:
+            self.config_path = os.path.abspath(config_path)
+            self.config_dir = os.path.dirname(self.config_path)
+        
+        logger.info(f"Prometheus config path: {self.config_path}, dir: {self.config_dir}")
         self.container = None
         self.prometheus_settings = self.get_prometheus_settings()
         self.container_name = self.prometheus_settings["prometheus-settings"]["name"]
@@ -28,12 +40,24 @@ class PrometheusManager:
         self.stop()
 
         try:
+            if os.path.exists(self.config_dir):
+                logger.debug(f"Config directory exists: {self.config_dir}")
+            else:
+                logger.info(f"Config directory may not be accessible from container (using host path): {self.config_dir}")
+            
+            if os.path.exists(self.config_path):
+                logger.debug(f"Config file exists: {self.config_path}")
+            else:
+                logger.info(f"Config file may not be accessible from container (using host path): {self.config_path}")
+
             volumes = {
                 self.config_dir: {
                     'bind': '/etc/prometheus',
                     'mode': 'ro'
                 }
             }
+
+            logger.info(f"Starting Prometheus with config from {self.config_dir} (mounted to /etc/prometheus)")
 
             self.container = self.client.containers.run(
                 image=self.prometheus_settings["prometheus-settings"]["image"],
@@ -44,10 +68,11 @@ class PrometheusManager:
                 restart_policy={"Name": "unless-stopped"}
             )
 
+            logger.info(f"Prometheus container started: {self.container_name}")
             return True
 
         except Exception as e:
-            logger.error(f"Ошибка запуска: {e}")
+            logger.error(f"Ошибка запуска: {e}", exc_info=True)
             return False
 
     def stop(self) -> bool:

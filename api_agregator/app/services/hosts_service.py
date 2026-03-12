@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 import requests
@@ -5,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.models.postgres.host import Host
 from app.db.redis.hosts import Hosts
+
+logger = logging.getLogger(__name__)
 
 
 class HostDTO:
@@ -94,12 +97,95 @@ class HostsService:
         for host in hosts:
             result[host.id] = {'name': host.name, 'host': host.host, 'port': host.port}
             try:
-                result[host.id]['status'] = requests.get(f'{host.base_url}/health').status_code
-            except (Exception,):
+                # Преобразуем localhost в host.docker.internal для Docker
+                resolved_host = self._resolve_host_for_docker(host.host)
+                base_url = f"http://{resolved_host}:{host.port}"
+                # Используем короткий таймаут для избежания зависаний
+                response = requests.get(f'{base_url}/health', timeout=3)
+                result[host.id]['status'] = response.status_code
+            except requests.exceptions.Timeout:
+                result[host.id]['status'] = 'timeout'
+            except requests.exceptions.ConnectionError:
                 result[host.id]['status'] = 'down'
+            except Exception as e:
+                # Логируем другие ошибки, но не прерываем процесс
+                logger.warning(f"Error checking host {host.id}: {e}")
+                result[host.id]['status'] = 'down'
+        
+        # Удаляем все старые хосты и загружаем новые
         self.redis_hosts.delete_hosts()
         self.redis_hosts.upload_hosts(result)
         return result
+
+    def add_host_to_redis(self, host_id: str, name: str, host: str, port: int) -> None:
+        """
+        Быстро добавляет один хост в Redis без проверки статуса.
+        
+        Args:
+            host_id: Идентификатор хоста
+            name: Имя хоста
+            host: Адрес хоста
+            port: Порт хоста
+        """
+        host_data = {
+            'name': name,
+            'host': host,
+            'port': port,
+            'status': 'unknown'  # Статус будет обновлен при следующей проверке
+        }
+        self.redis_hosts.upload_hosts({host_id: host_data})
+    
+    def _resolve_host_for_docker(self, host: str) -> str:
+        """
+        Преобразует localhost в host.docker.internal для работы в Docker.
+        
+        Args:
+            host: Адрес хоста
+            
+        Returns:
+            str: Преобразованный адрес хоста
+        """
+        # Если запущено в Docker и хост localhost/127.0.0.1, используем host.docker.internal
+        import os
+        if os.path.exists('/.dockerenv'):
+            if host in ('localhost', '127.0.0.1', '0.0.0.0'):
+                return 'host.docker.internal'
+        return host
+    
+    def check_host_status(self, host_id: str, host: str, port: int) -> str:
+        """
+        Проверяет статус одного хоста.
+        
+        Args:
+            host_id: Идентификатор хоста
+            host: Адрес хоста
+            port: Порт хоста
+            
+        Returns:
+            str: Статус хоста ('up', 'down', 'timeout', 'local_only')
+        """
+        try:
+            # Преобразуем localhost в host.docker.internal для Docker
+            resolved_host = self._resolve_host_for_docker(host)
+            base_url = f"http://{resolved_host}:{port}"
+            response = requests.get(f'{base_url}/health', timeout=2)
+            return str(response.status_code) if response.status_code == 200 else 'down'
+        except requests.exceptions.Timeout:
+            # Для localhost хостов, которые недоступны из контейнера, используем 'local_only'
+            if host in ('localhost', '127.0.0.1', '0.0.0.0'):
+                return 'local_only'
+            return 'timeout'
+        except requests.exceptions.ConnectionError:
+            # Для localhost хостов, которые недоступны из контейнера, используем 'local_only'
+            if host in ('localhost', '127.0.0.1', '0.0.0.0'):
+                return 'local_only'
+            return 'down'
+        except Exception as e:
+            logger.warning(f"Error checking host {host_id}: {e}")
+            # Для localhost хостов, которые недоступны из контейнера, используем 'local_only'
+            if host in ('localhost', '127.0.0.1', '0.0.0.0'):
+                return 'local_only'
+            return 'down'
 
     def get_all_hosts(self) -> list:
         """

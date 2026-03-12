@@ -1,0 +1,317 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: auto_observability_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+    # ports:
+    #   - "5433:5432"  # Доступ только внутри Docker сети
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: auto_observability_redis
+    # ports:
+    #   - "6379:6379"  # Доступ только внутри Docker сети
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  # MinIO
+  minio:
+    image: minio/minio:latest
+    container_name: auto_observability_minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - app_network
+
+  # API Aggregator
+  api_agregator:
+    build:
+      context: ./api_agregator
+      dockerfile: Dockerfile
+    container_name: auto_observability_api_agregator
+    env_file:
+      - ./api_agregator/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Переменные для подключения к PostgreSQL (если не указаны в .env)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      # Переменные для подключения к Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      # URLs для внешних сервисов (используем имена Docker сервисов)
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
+    ports:
+      - "8081:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Celery Worker 1
+  api_agregator_celery_worker_1:
+    build:
+      context: ./api_agregator
+      dockerfile: Dockerfile
+    container_name: auto_observability_celery_worker_1
+    env_file:
+      - ./api_agregator/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
+    command: celery -A app.celery_app worker --loglevel=info --hostname=worker1@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      api_agregator:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  # Celery Worker 2
+  api_agregator_celery_worker_2:
+    build:
+      context: ./api_agregator
+      dockerfile: Dockerfile
+    container_name: auto_observability_celery_worker_2
+    env_file:
+      - ./api_agregator/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
+    command: celery -A app.celery_app worker --loglevel=info --hostname=worker2@%h
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      api_agregator:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  # Celery Beat
+  api_agregator_celery_beat:
+    build:
+      context: ./api_agregator
+      dockerfile: Dockerfile
+    container_name: auto_observability_celery_beat
+    env_file:
+      - ./api_agregator/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
+    command: celery -A app.celery_app beat --loglevel=info
+    volumes:
+      - ./api_agregator:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      api_agregator:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  # Docker Classification
+  docker_classification:
+    build:
+      context: ./docker_classification
+      dockerfile: Dockerfile
+    container_name: auto_observability_docker_classification
+    env_file:
+      - ./docker_classification/.env
+    environment:
+      - SKIP_ENV_FILE_CHECK=true
+    ports:
+      - "8001:8000"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus Generation
+  prometheus_generation:
+    build:
+      context: ./prometheus_generation
+      dockerfile: Dockerfile
+    container_name: auto_observability_prometheus_generation
+    env_file:
+      - ./prometheus_generation/.env
+    environment:
+      SKIP_ENV_FILE_CHECK: "true"
+      # MinIO настройки
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_USR: minioadmin
+      MINIO_PWD: minioadmin
+    ports:
+      - "8002:8000"
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus Manager
+  prometheus_manager:
+    build:
+      context: ./prometheus_manager
+      dockerfile: Dockerfile
+    container_name: auto_observability_prometheus_manager
+    env_file:
+      - ./prometheus_manager/.env
+    environment:
+      SKIP_ENV_FILE_CHECK: "true"
+      # MinIO настройки
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_USR: minioadmin
+      MINIO_PWD: minioadmin
+      # Путь к конфигурации Prometheus на хосте
+      PROMETHEUS_CONFIG_HOST_PATH: /home/daniil/Рабочий стол/диплом/Auto_Observability/prometheus_manager/app/services/prometheus
+    ports:
+      - "8003:8000"
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./prometheus_manager/app/services/prometheus:/app/app/services/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
+    container_name: auto_observability_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api_agregator:
+        condition: service_healthy
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+

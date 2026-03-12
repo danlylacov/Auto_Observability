@@ -95,7 +95,14 @@ async def get_full_config() -> Dict:
         result = config.get_full_config()
         return result
     except Exception as e:
+        error_str = str(e)
+        # Если конфиг не найден, возвращаем пустую структуру вместо ошибки
+        if "NoSuchKey" in error_str or "does not exist" in error_str:
+            return {
+                'main_config': None,
+                'targets': {}
+            }
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при получении конфига: {str(e)}"
+            detail=f"Ошибка при получении конфига: {error_str}"
         )

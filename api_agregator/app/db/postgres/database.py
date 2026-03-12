@@ -10,10 +10,18 @@ from sqlalchemy.orm import sessionmaker, Session
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5433/auto_observability"
-)
+# Формируем DATABASE_URL из отдельных переменных или используем готовую строку
+# Приоритет: DATABASE_URL > отдельные переменные > дефолтное значение
+if not os.getenv("DATABASE_URL"):
+    postgres_host = os.getenv("POSTGRES_HOST", "postgres")
+    postgres_port = os.getenv("POSTGRES_PORT", "5432")
+    postgres_user = os.getenv("POSTGRES_USER", "postgres")
+    postgres_password = os.getenv("POSTGRES_PASSWORD", "postgres")
+    postgres_db = os.getenv("POSTGRES_DB", "auto_observability")
+    
+    DATABASE_URL = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}"
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(
     DATABASE_URL,

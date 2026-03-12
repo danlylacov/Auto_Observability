@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081'
+// Используем относительный путь для production (через nginx прокси) или значение из env
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 console.log('API URL configured:', API_URL)
 

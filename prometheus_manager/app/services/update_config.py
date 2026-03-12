@@ -3,6 +3,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import boto3
+import docker
 import yaml
 from botocore.client import Config
 from botocore.exceptions import ClientError
@@ -84,12 +85,38 @@ class UpdateConfig:
             logger.error(f"Ошибка при получении списка файлов: {e}")
             return []
 
+    def _get_exporter_host_port(self, container_port: str) -> Optional[str]:
+        """
+        Получает внешний порт экспортера на хосте по внутреннему порту контейнера.
+
+        Args:
+            container_port: Внутренний порт контейнера (например, "9216")
+
+        Returns:
+            Optional[str]: Внешний порт на хосте или None, если не найден
+        """
+        try:
+            docker_client = docker.from_env()
+            for container in docker_client.containers.list(all=True):
+                if 'exporter' in container.name.lower():
+                    ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
+                    for internal_port, port_bindings in ports.items():
+                        if internal_port.startswith(f"{container_port}/"):
+                            if port_bindings:
+                                host_port = port_bindings[0].get('HostPort')
+                                if host_port:
+                                    logger.info(f"Found exporter port mapping: {container_port} -> {host_port} for {container.name}")
+                                    return host_port
+        except Exception as e:
+            logger.warning(f"Error getting exporter port mapping: {e}")
+        return None
+
     def _fix_target_for_host_network(self, target: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Исправляет адрес target для работы с network_mode: host.
 
-        Заменяет IP хоста на localhost, так как Prometheus использует
-        network_mode: host и может обращаться к хосту напрямую.
+        Заменяет IP хоста или host.docker.internal на localhost и использует внешний порт экспортера,
+        так как Prometheus использует network_mode: host и может обращаться к хосту напрямую.
 
         Args:
             target: Список с конфигурацией target
@@ -97,19 +124,39 @@ class UpdateConfig:
         Returns:
             List[Dict[str, Any]]: Исправленная конфигурация target
         """
-        if not target or not target[0].get('targets'):
+        if not target:
             return target
 
-        target_address = target[0]['targets'][0]
-        host_part = target_address.split(':')[0]
-        port_part = target_address.split(':')[-1] if ':' in target_address else '9187'
+        for target_item in target:
+            if not isinstance(target_item, dict) or 'targets' not in target_item:
+                continue
+            
+            targets_list = target_item.get('targets', [])
+            if not targets_list:
+                continue
 
-        if host_part.startswith('172.17.') or host_part == '127.0.0.1' or host_part == 'localhost':
-            target[0]['targets'][0] = f"localhost:{port_part}"
-            logger.info(
-                f"Исправлен target адрес для host network: "
-                f"{target_address} -> {target[0]['targets'][0]}"
-            )
+            for i, target_address in enumerate(targets_list):
+                if not isinstance(target_address, str):
+                    continue
+                    
+                host_part = target_address.split(':')[0]
+                port_part = target_address.split(':')[-1] if ':' in target_address else '9187'
+
+                if (host_part == 'host.docker.internal' or 
+                    host_part.startswith('172.17.') or 
+                    host_part.startswith('172.18.') or 
+                    host_part.startswith('172.19.') or 
+                    host_part.startswith('172.20.') or
+                    host_part == '127.0.0.1'):
+                    host_port = self._get_exporter_host_port(port_part)
+                    if host_port:
+                        port_part = host_port
+                    
+                    targets_list[i] = f"localhost:{port_part}"
+                    logger.info(
+                        f"Исправлен target адрес для host network: "
+                        f"{target_address} -> {targets_list[i]}"
+                    )
 
         return target
 

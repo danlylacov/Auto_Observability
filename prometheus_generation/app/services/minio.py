@@ -148,9 +148,18 @@ class MinioService:
             Optional[str]: Содержимое файла или None при ошибке
         """
         bucket = bucket or self.bucket_name
-        response = self.s3_client.get_object(Bucket=bucket, Key=file_path)
-        content = response['Body'].read().decode('utf-8')
-        return content
+        try:
+            response = self.s3_client.get_object(Bucket=bucket, Key=file_path)
+            content = response['Body'].read().decode('utf-8')
+            return content
+        except Exception as e:
+            # Если файл не найден, возвращаем None вместо исключения
+            error_str = str(e)
+            if "NoSuchKey" in error_str or "does not exist" in error_str:
+                logger.debug(f"File {file_path} not found in bucket {bucket}")
+                return None
+            logger.error(f"Error getting file {file_path} from bucket {bucket}: {e}")
+            raise
 
     def get_yaml_file(self, file_path: str, bucket: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -163,13 +172,22 @@ class MinioService:
         Returns:
             Optional[Dict[str, Any]]: Распарсенный YAML или None при ошибке
         """
-        content = self._get_file(file_path, bucket)
-        if content is None:
-            return None
         try:
-            return yaml.safe_load(content)
-        except yaml.YAMLError:
-            return None
+            content = self._get_file(file_path, bucket)
+            if content is None:
+                return None
+            try:
+                return yaml.safe_load(content)
+            except yaml.YAMLError:
+                return None
+        except Exception as e:
+            # Если файл не найден (NoSuchKey), возвращаем None вместо исключения
+            error_str = str(e)
+            if "NoSuchKey" in error_str or "does not exist" in error_str:
+                logger.debug(f"File {file_path} not found in MinIO")
+                return None
+            logger.error(f"Error getting YAML file {file_path}: {e}")
+            raise
 
     def list_files(self, prefix: str = "", bucket: Optional[str] = None) -> List:
         """

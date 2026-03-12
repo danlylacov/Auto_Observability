@@ -11,6 +11,8 @@ pyyaml>=6.0
 # S3
 boto3
 
+aiohttp
+
 
 
 
