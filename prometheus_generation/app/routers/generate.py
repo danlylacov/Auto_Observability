@@ -33,9 +33,20 @@ async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
         config = generator.generate_config(container_dict, host)
 
         if config is None:
+            # Получаем информацию о стеке для более детального сообщения об ошибке
+            classification = container_dict.get('classification', {})
+            stack_result = classification.get('result', [])
+            stack_name = stack_result[0][0] if stack_result else 'неизвестен'
+            
+            available_stacks = ', '.join(sorted(generator.exporter_configs.keys()))
+            
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Не удалось сгенерировать конфигурацию. Проверьте данные контейнера и классификацию."
+                detail=(
+                    f"Не удалось сгенерировать конфигурацию для стека '{stack_name}'. "
+                    f"Экспортер для этого стека не поддерживается. "
+                    f"Доступные стеки: {available_stacks}"
+                )
             )
 
         minio_service = MinioService()

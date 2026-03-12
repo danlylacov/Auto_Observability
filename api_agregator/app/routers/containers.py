@@ -273,13 +273,28 @@ async def stop_container(
     Raises:
         HTTPException: Если хост не найден
     """
+    logger.info("Stopping container %s on host %s", container_id, host_id)
     try:
         hosts_service = HostsService(db)
         host_dto = hosts_service.get_host_by_id(host_id)
         if not host_dto:
+            logger.error("Host not found: %s", host_id)
             raise HTTPException(status_code=404, detail="Host not found")
 
-        docker_gateway = APIGateway(host_dto.base_url)
+        # Преобразуем адрес хоста для Docker (localhost -> host.docker.internal)
+        host_address = hosts_service._resolve_host_for_docker(host_dto.host)
+        docker_api_url = f"http://{host_address}:{host_dto.port}"
+        logger.info(
+            "Resolved host address: %s -> %s, using URL: %s",
+            host_dto.host, host_address, docker_api_url
+        )
+        # Создаем APIGateway с правильным URL
+        docker_gateway = APIGateway(docker_api_url)
+        # Увеличиваем таймаут для операций с контейнерами (остановка может занять время)
+        docker_gateway.timeout = 30
+        # Увеличиваем таймаут для операций с контейнерами (остановка может занять время)
+        docker_gateway.timeout = 30
+        logger.info("Timeout set to: %s", docker_gateway.timeout)
 
         result = docker_gateway.make_request(
             method="POST",
@@ -336,6 +351,10 @@ async def remove_container(
     if not host_dto:
         raise HTTPException(status_code=404, detail="Host not found")
 
+    # Преобразуем адрес хоста для Docker (localhost -> host.docker.internal)
+    host_address = hosts_service._resolve_host_for_docker(host_dto.host)
+    docker_api_url = f"http://{host_address}:{host_dto.port}"
+
     container = db.query(Container).filter(Container.id == container_id).first()
     container_name = None
     if container:
@@ -351,7 +370,9 @@ async def remove_container(
                 container_info.get("Config", {}).get("Hostname", "")
             )
 
-    docker_gateway = APIGateway(host_dto.base_url)
+    docker_gateway = APIGateway(docker_api_url)
+    # Увеличиваем таймаут для операций с контейнерами (удаление может занять время)
+    docker_gateway.timeout = 30
 
     if container_name:
         exporter_name = f"{container_name}-exporter"
@@ -493,7 +514,12 @@ async def start_container(
     if not host_dto:
         raise HTTPException(status_code=404, detail="Host not found")
 
-    docker_gateway = APIGateway(host_dto.base_url)
+    # Преобразуем адрес хоста для Docker (localhost -> host.docker.internal)
+    host_address = hosts_service._resolve_host_for_docker(host_dto.host)
+    docker_api_url = f"http://{host_address}:{host_dto.port}"
+    docker_gateway = APIGateway(docker_api_url)
+    # Увеличиваем таймаут для операций с контейнерами (запуск может занять время)
+    docker_gateway.timeout = 30
 
     result = docker_gateway.make_request(
         method="POST",

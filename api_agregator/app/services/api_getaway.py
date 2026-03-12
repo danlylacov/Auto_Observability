@@ -23,7 +23,7 @@ class APIGateway:
             service_url: Базовый URL сервиса
         """
         self.base_url = service_url
-        self.timeout = 30
+        self.timeout = 5
 
     def make_request(
             self,
@@ -50,7 +50,6 @@ class APIGateway:
             HTTPException: При ошибках запроса или ответа от сервиса
         """
         url = f"{self.base_url}{endpoint}"
-
         logger.info(f"Making {method} request to {url}")
         if json_data:
             logger.debug(f"Request JSON data: {json_data}")
@@ -69,14 +68,16 @@ class APIGateway:
 
             if response.status_code >= 400:
                 try:
-                    error_text = response.text
-                    logger.error(f"Service returned error: {error_text}")
+                    # Пытаемся извлечь детальное сообщение об ошибке из JSON
+                    error_json = response.json()
+                    error_detail = error_json.get('detail', response.text)
+                    logger.error(f"Service returned error: {error_detail}")
                 except Exception:
-                    error_text = "Unknown error"
+                    error_detail = response.text or "Unknown error"
 
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"Service error: {error_text}"
+                    detail=error_detail
                 )
 
             return response.json()
