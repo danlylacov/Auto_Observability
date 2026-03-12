@@ -173,7 +173,11 @@ class PrometheusConfigGenerator:
         stack_key = self._normalize_stack_name(stack)
 
         if stack_key not in self.exporter_configs:
-            logger.warning(f"Нет готовой конфигурации для стека: {stack} (ключ: {stack_key})")
+            available_stacks = ', '.join(sorted(self.exporter_configs.keys()))
+            logger.warning(
+                f"Нет готовой конфигурации для стека: {stack} (ключ: {stack_key}). "
+                f"Доступные стеки: {available_stacks}"
+            )
             return None
 
         exporter_config = self.exporter_configs[stack_key]

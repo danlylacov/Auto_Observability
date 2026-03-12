@@ -83,13 +83,18 @@
       </div>
     </div>
 
-    <div v-if="loading && !containers.length" class="loading-state">
+    <div v-if="loading" class="loading-state">
       <div class="loading"></div>
       <p>Loading containers...</p>
     </div>
 
     <div v-else-if="groupedContainers.length === 0" class="empty-state">
       <p>No containers found</p>
+      <p style="font-size: 12px; margin-top: 8px; color: var(--text-secondary);">
+        Total containers: {{ Object.keys(containers).length }}, 
+        Filtered: {{ filteredContainers.length }}, 
+        Groups: {{ groupedContainers.length }}
+      </p>
     </div>
 
     <div v-else class="table-container">
@@ -117,25 +122,35 @@
               <th>Image</th>
               <th>Stack</th>
               <th>Prometheus</th>
-              <th class="id-column">ID</th>
+              <th class="config-checkbox-column">In Config</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="[id, data] in group.items" :key="id">
-              <td class="checkbox-column">
-                <input 
-                  type="checkbox" 
-                  :checked="selectedContainers.has(id)"
-                  @change="toggleSelection(id, $event)"
-                  class="checkbox"
-                />
-              </td>
-              <td>
-                <a @click="viewDetails(id)" class="container-name-link">
-                  {{ data.info.Name?.replace(/^\//, '') || 'Unknown' }}
-                </a>
-              </td>
+            <template v-for="[id, data] in group.items" :key="id">
+              <tr>
+                <td class="checkbox-column">
+                  <input 
+                    type="checkbox" 
+                    :checked="selectedContainers.has(id)"
+                    @change="toggleSelection(id, $event)"
+                    class="checkbox"
+                  />
+                </td>
+                <td>
+                  <div class="container-name-cell">
+                    <span 
+                      v-if="hasExporter(data)" 
+                      class="container-expand-icon"
+                      @click="toggleContainerExpansion(id)"
+                    >
+                      {{ expandedContainers.has(id) ? '▼' : '▶' }}
+                    </span>
+                    <a @click="viewDetails(id)" class="container-name-link">
+                      {{ data.info.Name?.replace(/^\//, '') || 'Unknown' }}
+                    </a>
+                  </div>
+                </td>
               <td>
                 <span :class="['badge', getStatusBadgeClass(data.info.State?.Status)]">
                   {{ data.info.State?.Status || 'unknown' }}
@@ -178,54 +193,140 @@
                 </div>
                 <span v-else class="text-gray">-</span>
               </td>
-              <td class="text-xs text-gray id-column-cell">{{ id.substring(0, 12) }}</td>
+              <td class="config-checkbox-column">
+                <span 
+                  v-if="data.prometheus_config"
+                  class="config-indicator config-indicator-success"
+                  title="Container has Prometheus config"
+                >
+                  ✓
+                </span>
+                <span 
+                  v-else
+                  class="config-indicator config-indicator-error"
+                  title="No Prometheus config"
+                >
+                  ✗
+                </span>
+              </td>
               <td>
-                <div class="action-buttons">
+                <div class="dropdown-container">
                   <button 
-                    v-if="data.info.State?.Status === 'running'"
-                    @click="handleStop(id)" 
-                    class="btn btn-sm btn-danger"
+                    @click.stop="toggleDropdown($event, id)" 
+                    class="btn btn-sm btn-secondary dropdown-toggle"
                     :disabled="actionLoading === id"
-                    title="Stop"
                   >
                     <span v-if="actionLoading === id" class="loading"></span>
-                    <span v-else>Stop</span>
+                    <span v-else>Actions ▼</span>
                   </button>
-                  <button 
-                    v-else
-                    @click="handleStart(id)" 
-                    class="btn btn-sm btn-success"
-                    :disabled="actionLoading === id"
-                    title="Start"
-                  >
-                    <span v-if="actionLoading === id" class="loading"></span>
-                    <span v-else>Start</span>
-                  </button>
-                  <button 
-                    @click="handleRemove(id)" 
-                    class="btn btn-sm btn-danger"
-                    :disabled="actionLoading === id"
-                    title="Remove"
-                  >
-                    Remove
-                  </button>
-                  <button 
-                    @click="viewDetails(id)" 
-                    class="btn btn-sm btn-primary"
-                    title="Details"
-                  >
-                    Details
-                  </button>
-                  <button 
-                    @click="viewGenerateExporter(id)" 
-                    class="btn btn-sm btn-success"
-                    title="Prometheus Config"
-                  >
-                    Prometheus Config
-                  </button>
+                  <Teleport to="body">
+                    <transition name="dropdown">
+                      <div 
+                        v-if="openDropdowns.has(id)" 
+                        class="dropdown-menu"
+                        :style="dropdownPositions[id] ? {
+                          top: dropdownPositions[id].top + 'px',
+                          left: dropdownPositions[id].left + 'px'
+                        } : {}"
+                        @click.stop
+                      >
+                      <button 
+                        v-if="data.info.State?.Status === 'running'"
+                        @click="handleStop(id); closeDropdown(id)" 
+                        class="dropdown-item"
+                        :disabled="actionLoading === id"
+                      >
+                        Stop
+                      </button>
+                      <button 
+                        v-else
+                        @click="handleStart(id); closeDropdown(id)" 
+                        class="dropdown-item"
+                        :disabled="actionLoading === id"
+                      >
+                        Start
+                      </button>
+                      <button 
+                        @click="handleRemove(id); closeDropdown(id)" 
+                        class="dropdown-item dropdown-item-danger"
+                        :disabled="actionLoading === id"
+                      >
+                        Remove
+                      </button>
+                      <div class="dropdown-divider"></div>
+                      <button 
+                        @click="handleGenerateConfig(id); closeDropdown(id)" 
+                        class="dropdown-item"
+                        :disabled="actionLoading === id"
+                      >
+                        Generate Config
+                      </button>
+                      <button 
+                        @click="handleStartExporter(id); closeDropdown(id)" 
+                        class="dropdown-item"
+                        :disabled="actionLoading === id"
+                      >
+                        Start Exporter
+                      </button>
+                      <div class="dropdown-divider"></div>
+                      <button 
+                        @click="viewDetails(id); closeDropdown(id)" 
+                        class="dropdown-item"
+                      >
+                        Details
+                      </button>
+                      </div>
+                    </transition>
+                  </Teleport>
                 </div>
               </td>
             </tr>
+            <!-- Exporter row under container -->
+            <tr 
+              v-if="hasExporter(data) && expandedContainers.has(id)" 
+              :key="`exporter-${id}`"
+              class="exporter-row"
+            >
+              <td class="checkbox-column"></td>
+              <td colspan="7">
+                <div class="exporter-details">
+                  <div class="exporter-info">
+                    <span class="exporter-label">Exporter:</span>
+                    <span class="exporter-name">{{ data.prometheus_config.exporter.info?.name || 'Unknown Exporter' }}</span>
+                    <span class="exporter-status badge badge-success">Running</span>
+                    <span class="exporter-image text-gray">{{ data.prometheus_config.exporter.info?.image || 'Unknown' }}</span>
+                  </div>
+                  <div class="exporter-actions">
+                    <button 
+                      @click="handleStopExporter(id, data)" 
+                      class="btn btn-sm btn-warning"
+                      :disabled="actionLoading === data.prometheus_config.exporter.container_id"
+                      title="Stop Exporter"
+                    >
+                      <span v-if="actionLoading === data.prometheus_config.exporter.container_id" class="loading"></span>
+                      <span v-else>Stop</span>
+                    </button>
+                    <button 
+                      @click="handleRemoveExporter(id, data)" 
+                      class="btn btn-sm btn-danger"
+                      :disabled="actionLoading === data.prometheus_config.exporter.container_id"
+                      title="Remove Exporter"
+                    >
+                      <span v-if="actionLoading === data.prometheus_config.exporter.container_id" class="loading"></span>
+                      <span v-else>Remove</span>
+                    </button>
+                    <button 
+                      @click="viewDetails(id)" 
+                      class="btn btn-sm btn-primary"
+                      title="View Details"
+                    >
+                      Details
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -250,9 +351,63 @@ const statusFilter = ref('all')
 const selectedHostId = ref<string | null>(null)
 const selectedContainers = ref<Set<string>>(new Set())
 const bulkActionLoading = ref(false)
+const openDropdowns = ref<Set<string>>(new Set())
+const dropdownPositions = ref<Record<string, { top: number; left: number }>>({})
+
+const toggleDropdown = (e: Event, containerId: string) => {
+  e.stopPropagation()
+  e.preventDefault()
+  
+  const button = e.currentTarget as HTMLElement
+  const rect = button.getBoundingClientRect()
+  
+  // Use setTimeout to prevent immediate closure by document click handler
+  setTimeout(() => {
+    if (openDropdowns.value.has(containerId)) {
+      openDropdowns.value.delete(containerId)
+      delete dropdownPositions.value[containerId]
+    } else {
+      // Close all other dropdowns first
+      openDropdowns.value.clear()
+      openDropdowns.value.add(containerId)
+      // Store position for fixed positioning
+      dropdownPositions.value[containerId] = {
+        top: rect.bottom + 4,
+        left: rect.right - 160 // Align to right edge, accounting for menu width
+      }
+    }
+  }, 0)
+}
+
+const closeDropdown = (containerId: string) => {
+  openDropdowns.value.delete(containerId)
+}
+
+const isExporterContainer = (data: any): boolean => {
+  // Check if container is an exporter by name pattern or labels
+  const name = data.info?.Name || ''
+  const labels = data.info?.Config?.Labels || {}
+  
+  // Exporter containers typically have names ending with -exporter
+  if (name.includes('-exporter') || name.includes('_exporter')) {
+    return true
+  }
+  
+  // Check for exporter-related labels
+  if (labels['com.docker.compose.service']?.includes('exporter') ||
+      labels['exporter'] === 'true' ||
+      labels['prometheus.exporter'] === 'true') {
+    return true
+  }
+  
+  return false
+}
 
 const filteredContainers = computed(() => {
   let filtered = Object.entries(containers.value)
+  
+  // Filter out exporter containers
+  filtered = filtered.filter(([_, data]) => !isExporterContainer(data))
 
   if (selectedHostId.value) {
     filtered = filtered.filter(([_, data]) => data.host_id === selectedHostId.value)
@@ -280,6 +435,8 @@ const filteredContainers = computed(() => {
   return filtered
 })
 
+const expandedContainers = ref<Set<string>>(new Set())
+
 const groupedContainers = computed(() => {
   const groups: Record<string, { hostName: string; items: [string, any][] }> = {}
 
@@ -292,6 +449,7 @@ const groupedContainers = computed(() => {
         items: []
       }
     }
+    
     groups[hostKey].items.push([id, data])
   })
 
@@ -301,6 +459,20 @@ const groupedContainers = computed(() => {
     items: value.items
   }))
 })
+
+const hasExporter = (data: any): boolean => {
+  return !!(data.prometheus_config?.exporter?.running && data.prometheus_config?.exporter?.info)
+}
+
+const toggleContainerExpansion = (containerId: string) => {
+  const newSet = new Set(expandedContainers.value)
+  if (newSet.has(containerId)) {
+    newSet.delete(containerId)
+  } else {
+    newSet.add(containerId)
+  }
+  expandedContainers.value = newSet
+}
 
 const getStack = (classification: any): string | undefined => {
   if (classification?.result && classification.result.length > 0) {
@@ -317,11 +489,30 @@ const getStatusBadgeClass = (status: string | undefined): string => {
 const loadContainers = async () => {
   loading.value = true
   try {
-    containers.value = await containerApi.getContainers(selectedHostId.value || undefined)
+    const data = await containerApi.getContainers(selectedHostId.value || undefined)
+    containers.value = data
+    console.log('Loaded containers:', Object.keys(data).length, 'containers')
+    if (Object.keys(data).length > 0) {
+      const firstKey = Object.keys(data)[0]
+      console.log('First container sample:', {
+        id: firstKey,
+        host_id: data[firstKey]?.host_id,
+        host_name: data[firstKey]?.host_name,
+        name: data[firstKey]?.info?.Name
+      })
+    }
+    // Use nextTick to ensure computed properties are updated
+    await new Promise(resolve => setTimeout(resolve, 0))
+    console.log('Filtered containers:', filteredContainers.value.length)
+    console.log('Grouped containers:', groupedContainers.value.length, 'groups')
+    if (groupedContainers.value.length > 0) {
+      console.log('First group:', groupedContainers.value[0])
+    }
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'
     showToast(errorMsg, 'error')
+    containers.value = {}
   } finally {
     loading.value = false
   }
@@ -412,12 +603,115 @@ const handleRemove = async (id: string) => {
   }
 }
 
+const handleStopExporter = async (containerId: string, containerData: any) => {
+  const exporterContainerId = containerData.prometheus_config?.exporter?.container_id || 
+                              containerData.prometheus_config?.exporter?.info?.Id
+  if (!exporterContainerId) {
+    showToast('Exporter container ID not found', 'error')
+    return
+  }
+  
+  actionLoading.value = exporterContainerId
+  try {
+    const hostId = containerData.host_id
+    if (!hostId) {
+      throw new Error('Host ID is not available')
+    }
+    await containerApi.stopContainer(exporterContainerId, hostId)
+    showToast('Exporter stopped successfully', 'success')
+    await containerApi.updateContainers()
+    await loadContainers()
+  } catch (error: any) {
+    console.error('Failed to stop exporter:', error)
+    const errorMsg = error.response?.data?.detail || error.message || 'Failed to stop exporter'
+    showToast(errorMsg, 'error')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
+const handleRemoveExporter = async (containerId: string, containerData: any) => {
+  if (!confirm('Are you sure you want to remove this exporter container?')) {
+    return
+  }
+  
+  const exporterContainerId = containerData.prometheus_config?.exporter?.container_id || 
+                              containerData.prometheus_config?.exporter?.info?.Id
+  if (!exporterContainerId) {
+    showToast('Exporter container ID not found', 'error')
+    return
+  }
+  
+  actionLoading.value = exporterContainerId
+  try {
+    const hostId = containerData.host_id
+    if (!hostId) {
+      throw new Error('Host ID is not available')
+    }
+    await containerApi.removeContainer(exporterContainerId, hostId, true)
+    showToast('Exporter removed successfully', 'success')
+    await containerApi.updateContainers()
+    await loadContainers()
+  } catch (error: any) {
+    console.error('Failed to remove exporter:', error)
+    const errorMsg = error.response?.data?.detail || error.message || 'Failed to remove exporter'
+    showToast(errorMsg, 'error')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
 const viewDetails = (id: string) => {
   router.push(`/container/${id}`)
 }
 
 const viewGenerateExporter = (id: string) => {
   router.push(`/container/${id}/generate-exporter`)
+}
+
+const handleGenerateConfig = async (id: string) => {
+  actionLoading.value = id
+  try {
+    const container = containers.value[id]
+    const hostId = container?.host_id
+    if (!hostId) {
+      throw new Error('Host ID is not available for this container')
+    }
+    await containerApi.generateConfig(id, hostId)
+    showToast('Prometheus config generated successfully', 'success')
+    await loadContainers()
+  } catch (error: any) {
+    console.error('Failed to generate config:', error)
+    const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate config'
+    showToast(errorMsg, 'error')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
+const handleStartExporter = async (id: string) => {
+  const port = prompt('Enter exporter port (default: 9100):', '9100')
+  if (!port) return
+  
+  const exporterPort = parseInt(port)
+  if (isNaN(exporterPort) || exporterPort < 1024 || exporterPort > 65535) {
+    showToast('Invalid port number. Must be between 1024 and 65535.', 'error')
+    return
+  }
+
+  actionLoading.value = id
+  try {
+    await containerApi.upExporter(id, exporterPort)
+    showToast('Exporter started successfully', 'success')
+    await containerApi.updateContainers()
+    await loadContainers()
+  } catch (error: any) {
+    console.error('Failed to start exporter:', error)
+    const errorMsg = error.response?.data?.detail || error.message || 'Failed to start exporter'
+    showToast(errorMsg, 'error')
+  } finally {
+    actionLoading.value = null
+  }
 }
 
 const toggleSelection = (id: string, event: Event) => {
@@ -653,6 +947,14 @@ watch(selectedHostId, () => {
 onMounted(() => {
   loadHosts()
   loadContainers()
+  
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement
+    if (!target.closest('.dropdown-container') && !target.closest('.dropdown-menu')) {
+      openDropdowns.value.clear()
+    }
+  })
 })
 </script>
 
@@ -703,6 +1005,7 @@ onMounted(() => {
 .containers-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .containers-table thead {
@@ -723,7 +1026,9 @@ onMounted(() => {
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   word-break: break-word;
-  max-width: 200px;
+  overflow: visible;
+  text-overflow: ellipsis;
+  position: relative;
 }
 
 .containers-table tbody tr:hover {
@@ -745,10 +1050,72 @@ onMounted(() => {
   text-decoration: underline;
 }
 
-.action-buttons {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+.dropdown-container {
+  position: static;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  min-width: 80px;
+}
+
+.dropdown-menu {
+  position: fixed;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  min-width: 160px;
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.dropdown-item:hover:not(:disabled) {
+  background: var(--bg-secondary);
+}
+
+.dropdown-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-item-danger {
+  color: var(--danger-text, #dc3545);
+}
+
+.dropdown-item-danger:hover:not(:disabled) {
+  background: var(--danger-bg, rgba(220, 53, 69, 0.1));
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .btn-sm {
@@ -762,19 +1129,6 @@ onMounted(() => {
   border-width: 2px;
 }
 
-.id-column {
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
-}
-
-.id-column-cell {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: 'Courier New', monospace;
-}
 
 .host-header {
   display: flex;
@@ -791,8 +1145,77 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+.container-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.container-expand-icon {
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 16px;
+  display: inline-block;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+
+.container-expand-icon:hover {
+  color: var(--text-primary);
+}
+
+.exporter-row {
+  background-color: var(--exporter-bg, rgba(59, 130, 246, 0.05));
+}
+
+.exporter-row:hover {
+  background-color: var(--exporter-hover, rgba(59, 130, 246, 0.1));
+}
+
+.exporter-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.exporter-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.exporter-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.exporter-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.exporter-status {
+  font-size: 12px;
+}
+
+.exporter-image {
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.exporter-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .checkbox-column {
   width: 40px;
+  min-width: 40px;
+  max-width: 40px;
   text-align: center;
 }
 
@@ -801,6 +1224,27 @@ onMounted(() => {
   height: 18px;
   cursor: pointer;
   accent-color: var(--accent);
+}
+
+.config-checkbox-column {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  text-align: center;
+}
+
+.config-indicator {
+  font-size: 18px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+.config-indicator-success {
+  color: var(--success-text, #28a745);
+}
+
+.config-indicator-error {
+  color: var(--danger-text, #dc3545);
 }
 
 .bulk-actions-bar {
@@ -880,3 +1324,5 @@ onMounted(() => {
   font-size: 11px;
 }
 </style>
+
+

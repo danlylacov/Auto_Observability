@@ -6,6 +6,8 @@ import sys
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.postgres.database import Base, engine
+# Import all models to ensure they are registered with Base.metadata
+from app.models.postgres import Container, Host, PrometheusConfig
 
 # Настройка логирования
 logging.basicConfig(
