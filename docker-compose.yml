@@ -1,12 +1,11 @@
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: auto_observability_postgres
     env_file:
       - ./.env.postgres
-    # ports:
-    #   - "5433:5432"  # Доступ только внутри Docker сети
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,12 +16,9 @@ services:
     networks:
       - app_network
 
-  # Redis
   redis:
     image: redis:7-alpine
     container_name: auto_observability_redis
-    # ports:
-    #   - "6379:6379"  # Доступ только внутри Docker сети
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,7 +29,6 @@ services:
     networks:
       - app_network
 
-  # MinIO
   minio:
     image: minio/minio:latest
     container_name: auto_observability_minio
@@ -53,7 +48,6 @@ services:
     networks:
       - app_network
 
-  # API Aggregator
   api_agregator:
     build:
       context: ./api_agregator
@@ -80,7 +74,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Celery Worker 1
   api_agregator_celery_worker_1:
     build:
       context: ./api_agregator
@@ -101,7 +94,6 @@ services:
     networks:
       - app_network
 
-  # Celery Worker 2
   api_agregator_celery_worker_2:
     build:
       context: ./api_agregator
@@ -122,7 +114,6 @@ services:
     networks:
       - app_network
 
-  # Celery Beat
   api_agregator_celery_beat:
     build:
       context: ./api_agregator
@@ -145,7 +136,6 @@ services:
     networks:
       - app_network
 
-  # Docker Classification
   docker_classification:
     build:
       context: ./docker_classification
@@ -163,7 +153,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Prometheus Generation
   prometheus_generation:
     build:
       context: ./prometheus_generation
@@ -173,6 +162,8 @@ services:
       - ./prometheus_generation/.env
     ports:
       - "8002:8000"
+    volumes:
+      - ./signatures.yml:/app/signatures.yml:ro
     depends_on:
       minio:
         condition: service_healthy
@@ -184,7 +175,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Prometheus Manager
   prometheus_manager:
     build:
       context: ./prometheus_manager
@@ -208,7 +198,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Frontend
   frontend:
     build:
       context: ./frontend

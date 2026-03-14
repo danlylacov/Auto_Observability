@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+import docker
 import yaml
 
 from app.services.exporter_env_generator import ExporterEnvGenerator
@@ -21,11 +22,15 @@ class PrometheusConfigGenerator:
         Инициализация генератора конфигураций Prometheus.
 
         Args:
-            signatures_path: Путь к файлу signatures.yml. Если None, используется файл в текущей директории.
+            signatures_path: Путь к файлу signatures.yml. Если None, используется файл в корне проекта.
         """
         if signatures_path is None:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            signatures_path = os.path.join(current_dir, 'signatures.yml')
+            if os.path.exists('/app/signatures.yml'):
+                signatures_path = '/app/signatures.yml'
+            else:
+                current_file = os.path.abspath(__file__)
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+                signatures_path = os.path.join(project_root, 'signatures.yml')
 
         self.signatures_path = signatures_path
         self.exporter_configs = self._load_signatures()
@@ -91,6 +96,30 @@ class PrometheusConfigGenerator:
         """
         return stack.lower().replace(' ', '_')
 
+    def _get_exporter_host_port(self, container_port: str) -> Optional[str]:
+        """
+        Получает внешний порт экспортера на хосте.
+        Убирает выбор порта - всегда использует первый найденный внешний порт экспортера.
+
+        Args:
+            container_port: Внутренний порт контейнера (игнорируется, используется для логирования)
+
+        Returns:
+            Optional[str]: Внешний порт на хосте или None, если не найден
+        """
+        try:
+            docker_client = docker.from_env()
+            for container in docker_client.containers.list(all=True):
+                if 'exporter' in container.name.lower():
+                    ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
+                    for internal_port, port_bindings in ports.items():
+                        if port_bindings and len(port_bindings) > 0:
+                            host_port = port_bindings[0].get('HostPort')
+                            if host_port:
+                                return host_port
+        except Exception as e:
+            pass
+
     def _build_prometheus_config(
             self,
             container_name: str,
@@ -125,8 +154,10 @@ class PrometheusConfigGenerator:
             ]
         }
 
+        exporter_port = exporter_config.get('exporter_port', '9187')
+        
         target_yml = {
-            'targets': [f'{target_address}:{self.env_generator.get_exporter_port()[0]}'],
+            'targets': [f'{target_address}:{exporter_port}'],
             'labels': labels
         }
 
@@ -167,17 +198,11 @@ class PrometheusConfigGenerator:
 
         stack = self._get_stack_from_classification(classification)
         if not stack:
-            logger.warning(f"Не удалось определить стек для контейнера {container_name}")
             return None
 
         stack_key = self._normalize_stack_name(stack)
 
         if stack_key not in self.exporter_configs:
-            available_stacks = ', '.join(sorted(self.exporter_configs.keys()))
-            logger.warning(
-                f"Нет готовой конфигурации для стека: {stack} (ключ: {stack_key}). "
-                f"Доступные стеки: {available_stacks}"
-            )
             return None
 
         exporter_config = self.exporter_configs[stack_key]

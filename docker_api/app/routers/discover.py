@@ -44,10 +44,8 @@ async def get_containers():
         containers = docker_manager.discover_containers()
 
         if not containers:
-            logger.info("No containers found")
             return {"containers": [], "message": "No containers found"}
 
-        logger.info(f"Successfully discovered {len(containers)} containers")
         return {
             "containers": containers,
             "count": len(containers),

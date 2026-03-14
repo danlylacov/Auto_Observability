@@ -31,19 +31,14 @@ class DockerManager:
         """
         all_data = []
         for container in self.client.containers.list(all=True):
-            # Получаем метки контейнера
             labels = container.attrs.get('Config', {}).get('Labels', {})
             container_name = container.attrs.get('Name', '')
             
-            # Исключаем контейнеры docker-compose проекта
             compose_project = labels.get('com.docker.compose.project', '')
             if compose_project == 'auto_observability':
-                logger.debug(f"Excluding application container: {container_name}")
                 continue
             
-            # Также исключаем контейнеры с именами, начинающимися с auto_observability_
             if container_name.startswith('/auto_observability_') or container_name.startswith('auto_observability_'):
-                logger.debug(f"Excluding application container by name: {container_name}")
                 continue
             
             all_data.append(container.attrs)
@@ -100,7 +95,6 @@ class DockerManager:
                 self.client.images.get(image_name)
                 pull_status = "использован локальный образ"
             except docker.errors.ImageNotFound:
-                logger.info(f"Образ {image_name} не найден локально. Выполняется pull...")
                 self.client.images.pull(image_name)
                 pull_status = "образ успешно загружен"
 

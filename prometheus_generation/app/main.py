@@ -32,17 +32,13 @@ async def startup_event():
         
         if main_config is None:
             print("INFO: Основной конфиг Prometheus не найден. Создаю базовый конфиг...")
-            logger.info("Основной конфиг Prometheus не найден. Создаю базовый конфиг...")
             config.first_init()
             print("INFO: Базовый конфиг Prometheus успешно создан в MinIO")
-            logger.info("Базовый конфиг Prometheus успешно создан в MinIO")
         else:
             print("INFO: Основной конфиг Prometheus найден в MinIO")
-            logger.info("Основной конфиг Prometheus найден в MinIO")
     except Exception as e:
         print(f"ERROR: Ошибка при инициализации конфига Prometheus: {e}")
         logger.error(f"Ошибка при инициализации конфига Prometheus: {e}", exc_info=True)
-        # Не прерываем запуск приложения, если не удалось инициализировать конфиг
 
 
 @app.get("/")

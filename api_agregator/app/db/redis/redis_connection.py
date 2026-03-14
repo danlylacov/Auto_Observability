@@ -54,10 +54,6 @@ class RedisConnection:
                 socket_timeout=5,
             )
             self._client.ping()
-            logger.info(
-                "Успешное подключение к Redis: %s:%s/%s",
-                self.host, self.port, self.db
-            )
             return self._client
         except redis.ConnectionError as e:
             logger.error("Ошибка подключения к Redis: %s", e)
@@ -86,7 +82,6 @@ class RedisConnection:
         if self._client:
             self._client.close()
             self._client = None
-            logger.info("Подключение к Redis закрыто")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """

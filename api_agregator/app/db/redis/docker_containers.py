@@ -123,7 +123,6 @@ class DockerContainers(RedisConnection):
         pattern = f"container:{host_name}:*" if host_name else "container:*"
         container_keys = self.client.keys(pattern)
         if not container_keys:
-            logger.debug("Контейнеры не найдены")
             return 0
         deleted_count = self.client.delete(*container_keys)
         return deleted_count

@@ -109,7 +109,7 @@ Auto Observability — это платформа для автоматическ
 - Взвешенная система оценки для определения стека
 
 **Алгоритм классификации**:
-- Использует файл `signatures.yml` с правилами классификации
+- Использует файл `docker_classification/app/services/signatures.yml` с правилами классификации
 - Каждое правило имеет вес (weight)
 - Система суммирует веса по всем признакам
 - Возвращает отсортированный список технологий с вероятностями
@@ -141,6 +141,11 @@ Auto Observability — это платформа для автоматическ
 **Роутеры**:
 - `/api/v1/generate` — генерация конфигурации
 - `/api/v1/signature` — управление подписями
+
+**Конфигурация экспортеров**:
+- Использует файл `signatures.yml` в корне проекта для настройки экспортеров Prometheus
+- Файл содержит конфигурации портов, образов и переменных окружения для каждого типа стека
+- При запуске в Docker файл монтируется в контейнер как `/app/signatures.yml`
 
 **Формат конфигурации**:
 - `scrape_config.yml` — конфигурация для Prometheus
@@ -185,34 +190,52 @@ Auto Observability — это платформа для автоматическ
 - Redis 7+
 - MinIO (или S3-совместимое хранилище)
 
+### Структура проекта
+
+```
+Auto_Observability/
+├── signatures.yml                    # Конфигурация экспортеров Prometheus (в корне проекта)
+├── docker-compose.yml                # Docker Compose конфигурация
+├── run-dev.sh                        # Скрипт для локальной разработки
+├── api_agregator/                    # API Aggregator сервис
+├── docker_api/                       # Docker API сервис
+├── docker_classification/            # Docker Classification сервис
+├── prometheus_generation/            # Prometheus Generation сервис
+├── prometheus_manager/               # Prometheus Manager сервис
+└── frontend/                         # Frontend приложение
+```
+
 ### Настройка окружения
 
-Создайте файлы `.env` в каждом сервисе:
+Создайте файлы `.env.dev` в каждом сервисе для локальной разработки:
 
-**api_agregator/.env**:
+**api_agregator/.env.dev**:
 ```env
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5433
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=auto_observability
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=0
 CELERY_BROKER_URL=redis://localhost:6379/1
 CELERY_RESULT_BACKEND=redis://localhost:6379/2
-DOCKER_API_URL=http://localhost:8082
-DOCKER_CLASSIFICATION_API_URL=http://localhost:8083
-PROMETHEUS_GENERATION_URL=http://localhost:8084
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=auto_observability
-MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
+MINIO_ENDPOINT=http://localhost:9002
+MINIO_USR=minioadmin
+MINIO_PWD=minioadmin
+DOCKER_API_URL=http://localhost:8000
+DOCKER_CLASSIFICATION_API_URL=http://localhost:8001
+PROMETHEUS_GENERATION_URL=http://localhost:8002
+PROMETHEUS_MANAGER_URL=http://localhost:8003
 ```
 
-**frontend/.env**:
+**frontend/.env.dev**:
 ```env
 VITE_API_URL=http://localhost:8081
 ```
+
+Аналогично создайте `.env.dev` файлы для остальных сервисов (`prometheus_generation`, `prometheus_manager`, `docker_classification`).
 
 ### Установка зависимостей
 
@@ -238,45 +261,83 @@ python -m app.db.postgres.init_db
 
 ### Запуск сервисов
 
-**API Aggregator**:
+**Локальная разработка (рекомендуется)**:
+```bash
+./run-dev.sh start
+```
+
+Скрипт `run-dev.sh` автоматически:
+- Запускает инфраструктуру (PostgreSQL, Redis, MinIO) через Docker Compose
+- Инициализирует базу данных
+- Запускает все микросервисы с их `.env.dev` файлами
+- Запускает Celery worker и beat
+- Запускает frontend
+
+**Остановка сервисов**:
+```bash
+./run-dev.sh stop
+```
+
+**Запуск через Docker Compose**:
+```bash
+docker-compose up -d
+```
+
+**Ручной запуск отдельных сервисов** (для отладки):
+
+API Aggregator:
 ```bash
 cd api_agregator
+source .env.dev 2>/dev/null || true
 uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload
 ```
 
-**Celery Worker**:
+Celery Worker:
 ```bash
 cd api_agregator
+source .env.dev 2>/dev/null || true
 celery -A app.celery_app worker --loglevel=info
 ```
 
-**Celery Beat**:
+Celery Beat:
 ```bash
 cd api_agregator
+source .env.dev 2>/dev/null || true
 celery -A app.celery_app beat --loglevel=info
 ```
 
-**Docker API**:
+Docker API:
 ```bash
 cd docker_api
-uvicorn app.main:app --host 0.0.0.0 --port 8082 --reload
+source .env.dev 2>/dev/null || true
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**Docker Classification**:
+Docker Classification:
 ```bash
 cd docker_classification
-uvicorn app.main:app --host 0.0.0.0 --port 8083 --reload
+source .env.dev 2>/dev/null || true
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-**Prometheus Generation**:
+Prometheus Generation:
 ```bash
 cd prometheus_generation
-uvicorn app.main:app --host 0.0.0.0 --port 8084 --reload
+source .env.dev 2>/dev/null || true
+uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
 ```
 
-**Frontend**:
+Prometheus Manager:
+```bash
+cd prometheus_manager
+source .env.dev 2>/dev/null || true
+uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+```
+
+Frontend:
 ```bash
 cd frontend
+source .env.dev 2>/dev/null || true
 npm run dev
 ```
 
@@ -318,14 +379,35 @@ npm run dev
 2. Используйте `scrape_config.yml` в вашем `prometheus.yml`
 3. Используйте `targets.yml` для динамического обнаружения целей
 
+## Конфигурация
+
+### Файл signatures.yml
+
+Файл `signatures.yml` находится в корне проекта и содержит конфигурацию экспортеров Prometheus для различных технологических стеков. При запуске через Docker Compose файл автоматически монтируется в контейнер `prometheus_generation` как `/app/signatures.yml`.
+
+**Структура конфигурации**:
+```yaml
+mongodb:
+  job_name_suffix: "_mongodb"
+  exporter_port: 9216
+  metrics_path: "/metrics"
+  exporter_image: "percona/mongodb_exporter:0.39"
+  env_vars:
+    MONGODB_URI: "mongodb://localhost:27017"
+  env_template: "mongodb://{user}:{password}@{host}:{port}/{database}"
+```
+
+**Важно**: При локальной разработке файл должен находиться в корне проекта. При запуске через Docker Compose файл монтируется автоматически.
+
 ## API Документация
 
 После запуска сервисов документация доступна по адресам:
 
 - API Aggregator: http://localhost:8081/docs
-- Docker API: http://localhost:8082/docs
-- Docker Classification: http://localhost:8083/docs
-- Prometheus Generation: http://localhost:8084/docs
+- Docker API: http://localhost:8000/docs
+- Docker Classification: http://localhost:8001/docs
+- Prometheus Generation: http://localhost:8002/docs
+- Prometheus Manager: http://localhost:8003/docs
 
 ## Лицензия
 

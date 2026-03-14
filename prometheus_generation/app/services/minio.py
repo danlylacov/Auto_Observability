@@ -95,7 +95,6 @@ class MinioService:
 
         target_array = [target]
 
-        logger.debug(f"Uploading scrape_config: {scrape_config}")
 
         scrape_config_yaml = yaml.dump(
             prometheus_config,
@@ -153,10 +152,8 @@ class MinioService:
             content = response['Body'].read().decode('utf-8')
             return content
         except Exception as e:
-            # Если файл не найден, возвращаем None вместо исключения
             error_str = str(e)
             if "NoSuchKey" in error_str or "does not exist" in error_str:
-                logger.debug(f"File {file_path} not found in bucket {bucket}")
                 return None
             logger.error(f"Error getting file {file_path} from bucket {bucket}: {e}")
             raise
@@ -181,10 +178,8 @@ class MinioService:
             except yaml.YAMLError:
                 return None
         except Exception as e:
-            # Если файл не найден (NoSuchKey), возвращаем None вместо исключения
             error_str = str(e)
             if "NoSuchKey" in error_str or "does not exist" in error_str:
-                logger.debug(f"File {file_path} not found in MinIO")
                 return None
             logger.error(f"Error getting YAML file {file_path}: {e}")
             raise

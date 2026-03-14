@@ -21,11 +21,15 @@ class ExporterEnvGenerator:
 
         Args:
             signatures_path: Путь к файлу signatures.yml.
-                           Если None, используется файл в текущей директории.
+                           Если None, используется файл в корне проекта.
         """
         if signatures_path is None:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            signatures_path = os.path.join(current_dir, 'signatures.yml')
+            if os.path.exists('/app/signatures.yml'):
+                signatures_path = '/app/signatures.yml'
+            else:
+                current_file = os.path.abspath(__file__)
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+                signatures_path = os.path.join(project_root, 'signatures.yml')
 
         self.signatures_path = signatures_path
         self.exporter_configs = self._load_signatures()

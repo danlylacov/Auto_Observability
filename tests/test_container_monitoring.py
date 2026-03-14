@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Тестовый скрипт для полного цикла подключения мониторинга контейнера.
 
@@ -38,7 +37,6 @@ def log(message: str, level: str = "INFO"):
         "WARNING": "\033[93m",
         "RESET": "\033[0m"
     }
-    logger.info(f"{colors.get(level, '')}[{level}]{colors['RESET']} {message}")
 
 
 def get_container(container_id: str) -> Optional[Dict[str, Any]]:
