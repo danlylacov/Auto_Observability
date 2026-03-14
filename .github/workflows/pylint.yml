@@ -8,7 +8,6 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10"]
-    # Добавляем права на запись в репозиторий
     permissions:
       contents: write
     steps:
@@ -26,18 +25,15 @@ jobs:
     
     - name: Analysing the code with pylint
       run: |
-        # Запускаем pylint и сохраняем результат
         pylint $(git ls-files '*.py') --fail-under=0 > pylint_output.txt || true
     
     - name: Extract pylint score
       id: pylint_score
       run: |
-        # Извлекаем оценку из вывода pylint
         score=$(grep -oP 'Your code has been rated at \K[0-9.]+' pylint_output.txt | head -1)
         if [ -z "$score" ]; then
           score="0.0"
         fi
-        # Округляем до 2 знаков
         score=$(printf "%.2f" $score)
         echo "score=$score" >> $GITHUB_OUTPUT
         echo "Extracted score: $score"
@@ -46,7 +42,6 @@ jobs:
       run: |
         score=${{ steps.pylint_score.outputs.score }}
         
-        # Определяем цвет
         if (( $(echo "$score >= 9.0" | bc -l) )); then
           color="brightgreen"
           hex="4c1"
@@ -64,10 +59,8 @@ jobs:
           hex="e05d44"
         fi
         
-        # Создаем директорию для бейджей
         mkdir -p .badges
         
-        # Создаем SVG бейдж
         cat > .badges/pylint.svg << EOF
         <svg xmlns="http://www.w3.org/2000/svg" width="100" height="20">
           <linearGradient id="b" x2="0" y2="100%">

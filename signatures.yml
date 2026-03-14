@@ -1,7 +1,4 @@
-# КОНФИГУРАЦИЯ ЭКСПОРТЕРОВ PROMETHEUS ДЛЯ РАЗЛИЧНЫХ СТЕКОВ
-# Формат: stack_name -> конфигурация экспортера
 
-# Databases
 postgresql:
   job_name_suffix: "_postgres"
   exporter_port: 9187
@@ -19,6 +16,7 @@ mongodb:
   env_vars:
     MONGODB_URI: "mongodb://localhost:27017"
   env_template: "mongodb://{user}:{password}@{host}:{port}/{database}"
+
 
 
 

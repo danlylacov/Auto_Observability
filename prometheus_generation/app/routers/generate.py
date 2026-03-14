@@ -33,7 +33,6 @@ async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
         config = generator.generate_config(container_dict, host)
 
         if config is None:
-            # Получаем информацию о стеке для более детального сообщения об ошибке
             classification = container_dict.get('classification', {})
             stack_result = classification.get('result', [])
             stack_name = stack_result[0][0] if stack_result else 'неизвестен'

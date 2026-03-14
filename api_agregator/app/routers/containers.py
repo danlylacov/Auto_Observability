@@ -143,14 +143,6 @@ async def get_containers(
                     exporter_name = f"{container_name}-exporter"
                     exporter_name_lower = exporter_name.lower()
 
-                    logger.debug(
-                        "Searching exporter for container %s: "
-                        "container_name=%s, exporter_name=%s, "
-                        "config_host_name=%s",
-                        container_id, container_name,
-                        exporter_name, config_host_name
-                    )
-
                     if config_host_name:
                         exporter_key = (config_host_name, exporter_name_lower)
                         if exporter_key in exporter_index_by_host:

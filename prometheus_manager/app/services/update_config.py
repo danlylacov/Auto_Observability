@@ -87,10 +87,11 @@ class UpdateConfig:
 
     def _get_exporter_host_port(self, container_port: str) -> Optional[str]:
         """
-        Получает внешний порт экспортера на хосте по внутреннему порту контейнера.
+        Получает внешний порт экспортера на хосте.
+        Убирает выбор порта - всегда использует первый найденный внешний порт экспортера.
 
         Args:
-            container_port: Внутренний порт контейнера (например, "9216")
+            container_port: Внутренний порт контейнера (игнорируется, используется для логирования)
 
         Returns:
             Optional[str]: Внешний порт на хосте или None, если не найден
@@ -101,15 +102,12 @@ class UpdateConfig:
                 if 'exporter' in container.name.lower():
                     ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
                     for internal_port, port_bindings in ports.items():
-                        if internal_port.startswith(f"{container_port}/"):
-                            if port_bindings:
-                                host_port = port_bindings[0].get('HostPort')
-                                if host_port:
-                                    logger.info(f"Found exporter port mapping: {container_port} -> {host_port} for {container.name}")
-                                    return host_port
+                        if port_bindings and len(port_bindings) > 0:
+                            host_port = port_bindings[0].get('HostPort')
+                            if host_port:
+                                return host_port
         except Exception as e:
-            logger.warning(f"Error getting exporter port mapping: {e}")
-        return None
+            pass
 
     def _fix_target_for_host_network(self, target: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -142,21 +140,18 @@ class UpdateConfig:
                 host_part = target_address.split(':')[0]
                 port_part = target_address.split(':')[-1] if ':' in target_address else '9187'
 
-                if (host_part == 'host.docker.internal' or 
-                    host_part.startswith('172.17.') or 
-                    host_part.startswith('172.18.') or 
-                    host_part.startswith('172.19.') or 
-                    host_part.startswith('172.20.') or
-                    host_part == '127.0.0.1'):
-                    host_port = self._get_exporter_host_port(port_part)
-                    if host_port:
-                        port_part = host_port
-                    
-                    targets_list[i] = f"localhost:{port_part}"
-                    logger.info(
-                        f"Исправлен target адрес для host network: "
-                        f"{target_address} -> {targets_list[i]}"
-                    )
+                needs_fix = (host_part == 'host.docker.internal' or 
+                            host_part.startswith('172.17.') or 
+                            host_part.startswith('172.18.') or 
+                            host_part.startswith('172.19.') or 
+                            host_part.startswith('172.20.') or
+                            host_part == '127.0.0.1' or
+                            host_part == 'localhost')
+
+                if needs_fix:
+                    new_target = f"localhost:{port_part}"
+                    targets_list[i] = new_target
+
 
         return target
 
@@ -169,7 +164,6 @@ class UpdateConfig:
         """
         main_config = self._get_yaml_file('mainConfig/prometheus.yml')
         if not main_config:
-            logger.warning("Основной конфиг не найден в MinIO")
             return
 
         prometheus_yml_path = os.path.join(self.prometheus_dir, 'prometheus.yml')
@@ -186,13 +180,28 @@ class UpdateConfig:
                 target_content = self._fix_target_for_host_network(target_content)
                 file_name = file_path.split('/')[-1]
                 target_path = os.path.join(self.targets_dir, file_name)
-                with open(target_path, 'w', encoding='utf-8') as f:
-                    yaml.dump(
-                        target_content,
-                        f,
-                        allow_unicode=True,
-                        default_flow_style=False,
-                        sort_keys=False
-                    )
+                
+                if os.path.exists(target_path):
+                    try:
+                        if not os.access(target_path, os.W_OK):
+                            os.remove(target_path)
+                    except (PermissionError, OSError) as e:
+                        try:
+                            os.remove(target_path)
+                        except Exception:
+                            pass
+                
+                try:
+                    with open(target_path, 'w', encoding='utf-8') as f:
+                        yaml.dump(
+                            target_content,
+                            f,
+                            allow_unicode=True,
+                            default_flow_style=False,
+                            sort_keys=False
+                        )
+                    os.chmod(target_path, 0o644)
+                except PermissionError as e:
+                    logger.error(f"Permission denied writing to {target_path}: {e}")
+                    raise
 
-        logger.info(f"Конфигурация обновлена: {len(target_files)} файлов targets")

@@ -1,9 +1,5 @@
-# КАРТА СИГНАТУР С СИСТЕМОЙ ОЧКОВ
-# Порог (threshold) для активации мониторинга рекомендуется ставить на уровне 50-60
 
-# 1. СТАНДАРТНЫЕ ПОРТЫ
 ports:
-  # Databases
   "5432": { tech: "postgresql", weight: 60 }
   "3306": { tech: "mysql", weight: 60 }
   "27017": { tech: "mongodb", weight: 60 }
@@ -27,7 +23,6 @@ ports:
   "2424": { tech: "orientdb", weight: 60 }
   "2480": { tech: "orientdb", weight: 60 }
 
-  # Message Brokers
   "5672": { tech: "rabbitmq", weight: 60 }
   "9092": { tech: "kafka", weight: 60 }
   "4222": { tech: "nats", weight: 60 }
@@ -39,7 +34,6 @@ ports:
   "9876": { tech: "rocketmq", weight: 60 }
   "10911": { tech: "rocketmq", weight: 60 }
 
-  # Web & Proxies
   "80": { tech: "nginx", weight: 30 }
   "443": { tech: "nginx", weight: 30 }
   "8080": { tech: "http_generic", weight: 15 }
@@ -55,20 +49,16 @@ ports:
   "8001": { tech: "kong", weight: 50 }
   "8443": { tech: "kong", weight: 50 }
   
-  # Python Application Ports (common for FastAPI, Django, Flask)
   "8002": { tech: "python", weight: 30 }
   
-  # React/Next.js Application Ports
   "3000": { tech: "react", weight: 30 }
 
-  # Search & Analytics
   "9200": { tech: "elasticsearch", weight: 60 }
   "3100": { tech: "loki", weight: 60 }
   "8983": { tech: "solr", weight: 60 }
   "7700": { tech: "meilisearch", weight: 60 }
   "8108": { tech: "typesense", weight: 60 }
 
-  # Monitoring & Observability
   "16686": { tech: "jaeger", weight: 60 }
   "14268": { tech: "jaeger", weight: 60 }
   "9411": { tech: "zipkin", weight: 60 }
@@ -83,7 +73,6 @@ ports:
   "9273": { tech: "telegraf", weight: 60 }
   "8126": { tech: "datadog", weight: 60 }
 
-  # Container Orchestration
   "6443": { tech: "kubernetes", weight: 60 }
   "2379": { tech: "etcd", weight: 60 }
   "2380": { tech: "etcd", weight: 60 }
@@ -95,26 +84,21 @@ ports:
   "9000": { tech: "portainer", weight: 50 }
   "9443": { tech: "portainer", weight: 50 }
 
-  # CI/CD Tools
   "50000": { tech: "jenkins", weight: 60 }
 
-  # Storage
   "9001": { tech: "minio", weight: 60 }
   "6789": { tech: "ceph", weight: 60 }
   "6800": { tech: "ceph", weight: 60 }
   "24007": { tech: "glusterfs", weight: 60 }
   "24008": { tech: "glusterfs", weight: 60 }
 
-  # Other Services
   "2368": { tech: "ghost", weight: 60 }
   "22": { tech: "gitlab", weight: 40 }
   "8090": { tech: "confluence", weight: 60 }
   "8081": { tech: "nexus", weight: 60 }
   "8082": { tech: "artifactory", weight: 60 }
 
-# 2. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
 env:
-  # Languages/Runtimes
   "PYTHON_VERSION": { tech: "python", weight: 30 }
   "PYTHONUNBUFFERED": { tech: "python", weight: 40 }
   "NODE_VERSION": { tech: "nodejs", weight: 30 }
@@ -134,7 +118,6 @@ env:
   "KOTLIN_VERSION": { tech: "kotlin", weight: 30 }
   "SCALA_VERSION": { tech: "scala", weight: 30 }
 
-  # DB Specific (Очень точные признаки)
   "POSTGRES_PASSWORD": { tech: "postgresql", weight: 50 }
   "POSTGRES_DB": { tech: "postgresql", weight: 50 }
   "POSTGRES_USER": { tech: "postgresql", weight: 50 }
@@ -160,7 +143,6 @@ env:
   "CLICKHOUSE_USER": { tech: "clickhouse", weight: 50 }
   "CLICKHOUSE_PASSWORD": { tech: "clickhouse", weight: 50 }
 
-  # Frameworks
   "DJANGO_SETTINGS_MODULE": { tech: "django", weight: 70 }
   "FLASK_APP": { tech: "flask", weight: 70 }
   "RAILS_ENV": { tech: "rails", weight: 70 }
@@ -182,7 +164,6 @@ env:
   "PHOENIX_HOST": { tech: "phoenix", weight: 70 }
   "PLAY_HTTP_SECRET_KEY": { tech: "play", weight: 70 }
   
-  # Python Application Indicators
   "SECRET_KEY": { tech: "python", weight: 40 }
   "DATABASE_URL": { tech: "python", weight: 40 }
   "ALGORITHM": { tech: "python", weight: 30 }
@@ -191,17 +172,13 @@ env:
   "RAG_API_URL": { tech: "python", weight: 30 }
   "BACKEND_API_URL": { tech: "python", weight: 30 }
   
-  # React Application Indicators
   "REACT_APP_": { tech: "react", weight: 50 }
   
-  # Nginx Indicators
   "NGINX_VERSION": { tech: "nginx", weight: 50 }
   
-  # Telegram Bot Indicators
   "TELEGRAM_BOT_TOKEN": { tech: "telegram_bot", weight: 60 }
   "ADMIN_GROUP_CHAT_ID": { tech: "telegram_bot", weight: 40 }
 
-  # Message Brokers
   "RABBITMQ_DEFAULT_USER": { tech: "rabbitmq", weight: 50 }
   "RABBITMQ_DEFAULT_PASS": { tech: "rabbitmq", weight: 50 }
   "KAFKA_BROKER_ID": { tech: "kafka", weight: 50 }
@@ -213,7 +190,6 @@ env:
   "MQTT_USERNAME": { tech: "mqtt", weight: 50 }
   "MQTT_PASSWORD": { tech: "mqtt", weight: 50 }
 
-  # Monitoring & Observability
   "JAEGER_AGENT_HOST": { tech: "jaeger", weight: 50 }
   "JAEGER_SAMPLER_TYPE": { tech: "jaeger", weight: 50 }
   "ZIPKIN_SERVICE_NAME": { tech: "zipkin", weight: 50 }
@@ -229,7 +205,6 @@ env:
   "SENTRY_DSN": { tech: "sentry", weight: 50 }
   "SENTRY_ENVIRONMENT": { tech: "sentry", weight: 50 }
 
-  # Container Orchestration
   "KUBERNETES_SERVICE_HOST": { tech: "kubernetes", weight: 50 }
   "KUBERNETES_SERVICE_PORT": { tech: "kubernetes", weight: 50 }
   "ETCD_NAME": { tech: "etcd", weight: 50 }
@@ -241,7 +216,6 @@ env:
   "NOMAD_ADDR": { tech: "nomad", weight: 50 }
   "NOMAD_REGION": { tech: "nomad", weight: 50 }
 
-  # CI/CD
   "JENKINS_OPTS": { tech: "jenkins", weight: 50 }
   "JENKINS_HOME": { tech: "jenkins", weight: 50 }
   "GITLAB_CI": { tech: "gitlab_runner", weight: 50 }
@@ -251,14 +225,12 @@ env:
   "ARGOCD_SERVER_PORT": { tech: "argocd", weight: 50 }
   "ARGOCD_SERVER_ROOT_PATH": { tech: "argocd", weight: 50 }
 
-  # Storage
   "MINIO_ROOT_USER": { tech: "minio", weight: 50 }
   "MINIO_ROOT_PASSWORD": { tech: "minio", weight: 50 }
   "AWS_ACCESS_KEY_ID": { tech: "s3", weight: 40 }
   "AWS_SECRET_ACCESS_KEY": { tech: "s3", weight: 40 }
   "S3_ENDPOINT": { tech: "s3", weight: 50 }
 
-  # Other Services
   "WORDPRESS_DB_HOST": { tech: "wordpress", weight: 70 }
   "WORDPRESS_DB_NAME": { tech: "wordpress", weight: 70 }
   "WORDPRESS_DB_USER": { tech: "wordpress", weight: 70 }
@@ -277,9 +249,7 @@ env:
   "NEXUS_DATA_DIR": { tech: "nexus", weight: 50 }
   "ARTIFACTORY_HOME": { tech: "artifactory", weight: 50 }
 
-# 3. ИМЕНА ОБРАЗОВ
 images:
-  # Databases
   "postgres": { tech: "postgresql", weight: 40 }
   "postgresql": { tech: "postgresql", weight: 40 }
   "mysql": { tech: "mysql", weight: 40 }
@@ -303,7 +273,6 @@ images:
   "timescaledb": { tech: "timescaledb", weight: 40 }
   "supabase": { tech: "supabase", weight: 40 }
 
-  # Message Brokers
   "rabbitmq": { tech: "rabbitmq", weight: 40 }
   "kafka": { tech: "kafka", weight: 40 }
   "nats": { tech: "nats", weight: 40 }
@@ -315,7 +284,6 @@ images:
   "rocketmq": { tech: "rocketmq", weight: 40 }
   "zeromq": { tech: "zeromq", weight: 40 }
 
-  # Web Servers & Proxies
   "nginx": { tech: "nginx", weight: 40 }
   "apache": { tech: "apache", weight: 40 }
   "httpd": { tech: "apache", weight: 40 }
@@ -330,14 +298,12 @@ images:
   "ambassador": { tech: "ambassador", weight: 40 }
   "gloo": { tech: "gloo", weight: 40 }
 
-  # Search Engines
   "elasticsearch": { tech: "elasticsearch", weight: 40 }
   "opensearch": { tech: "opensearch", weight: 40 }
   "solr": { tech: "solr", weight: 40 }
   "meilisearch": { tech: "meilisearch", weight: 40 }
   "typesense": { tech: "typesense", weight: 40 }
 
-  # Monitoring & Observability
   "grafana": { tech: "grafana", weight: 40 }
   "prometheus": { tech: "prometheus", weight: 40 }
   "jaeger": { tech: "jaeger", weight: 40 }
@@ -356,7 +322,6 @@ images:
   "sentry": { tech: "sentry", weight: 40 }
   "loki": { tech: "loki", weight: 40 }
 
-  # Container Orchestration
   "kubernetes": { tech: "kubernetes", weight: 40 }
   "k8s": { tech: "kubernetes", weight: 40 }
   "k3s": { tech: "k3s", weight: 40 }
@@ -367,7 +332,6 @@ images:
   "portainer": { tech: "portainer", weight: 40 }
   "rancher": { tech: "rancher", weight: 40 }
 
-  # CI/CD
   "jenkins": { tech: "jenkins", weight: 40 }
   "gitlab-runner": { tech: "gitlab_runner", weight: 40 }
   "gitlab/gitlab-runner": { tech: "gitlab_runner", weight: 40 }
@@ -376,12 +340,10 @@ images:
   "spinnaker": { tech: "spinnaker", weight: 40 }
   "tekton": { tech: "tekton", weight: 40 }
 
-  # Storage
   "minio": { tech: "minio", weight: 40 }
   "ceph": { tech: "ceph", weight: 40 }
   "glusterfs": { tech: "glusterfs", weight: 40 }
 
-  # Frameworks & Runtimes
   "python": { tech: "python", weight: 30 }
   "node": { tech: "nodejs", weight: 30 }
   "nodejs": { tech: "nodejs", weight: 30 }
@@ -397,7 +359,6 @@ images:
   "elixir": { tech: "elixir", weight: 30 }
   "erlang": { tech: "erlang", weight: 30 }
 
-  # Application Frameworks
   "django": { tech: "django", weight: 40 }
   "flask": { tech: "flask", weight: 40 }
   "rails": { tech: "rails", weight: 40 }
@@ -417,7 +378,6 @@ images:
   "telegram": { tech: "telegram_bot", weight: 40 }
   "bot": { tech: "telegram_bot", weight: 30 }
 
-  # Other Services
   "wordpress": { tech: "wordpress", weight: 40 }
   "drupal": { tech: "drupal", weight: 40 }
   "joomla": { tech: "joomla", weight: 40 }
@@ -433,7 +393,6 @@ images:
   "artifactory": { tech: "artifactory", weight: 40 }
   "jfrog": { tech: "artifactory", weight: 40 }
 
-# 4. СПЕЦИФИЧНЫЕ МЕТКИ (Высший приоритет)
 labels:
   "monitor.type": { tech: "auto", weight: 100 }
   "monitor.enable": { tech: "auto", weight: 100 }

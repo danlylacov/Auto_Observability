@@ -3,8 +3,10 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: auto_observability_postgres
-    env_file:
-      - ./.env.postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
     # ports:
     #   - "5433:5432"  # Доступ только внутри Docker сети
     volumes:
@@ -37,8 +39,9 @@ services:
   minio:
     image: minio/minio:latest
     container_name: auto_observability_minio
-    env_file:
-      - ./.env.minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     ports:
       - "9002:9000"
       - "9003:9001"
@@ -63,6 +66,24 @@ services:
       - ./api_agregator/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      # Переменные для подключения к PostgreSQL (если не указаны в .env)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      # Переменные для подключения к Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      # URLs для внешних сервисов (используем имена Docker сервисов)
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
     ports:
       - "8081:8000"
     depends_on:
@@ -90,6 +111,21 @@ services:
       - ./api_agregator/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
     command: celery -A app.celery_app worker --loglevel=info --hostname=worker1@%h
     depends_on:
       redis:
@@ -111,6 +147,21 @@ services:
       - ./api_agregator/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
     command: celery -A app.celery_app worker --loglevel=info --hostname=worker2@%h
     depends_on:
       redis:
@@ -132,6 +183,21 @@ services:
       - ./api_agregator/.env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auto_observability
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
+      DOCKER_API_URL: http://docker_api:8000
+      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
     command: celery -A app.celery_app beat --loglevel=info
     volumes:
       - ./api_agregator:/app
@@ -153,6 +219,8 @@ services:
     container_name: auto_observability_docker_classification
     env_file:
       - ./docker_classification/.env
+    environment:
+      - SKIP_ENV_FILE_CHECK=true
     ports:
       - "8001:8000"
     networks:
@@ -171,6 +239,12 @@ services:
     container_name: auto_observability_prometheus_generation
     env_file:
       - ./prometheus_generation/.env
+    environment:
+      SKIP_ENV_FILE_CHECK: "true"
+      # MinIO настройки
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_USR: minioadmin
+      MINIO_PWD: minioadmin
     ports:
       - "8002:8000"
     depends_on:
@@ -192,6 +266,14 @@ services:
     container_name: auto_observability_prometheus_manager
     env_file:
       - ./prometheus_manager/.env
+    environment:
+      SKIP_ENV_FILE_CHECK: "true"
+      # MinIO настройки
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_USR: minioadmin
+      MINIO_PWD: minioadmin
+      # Путь к конфигурации Prometheus на хосте
+      PROMETHEUS_CONFIG_HOST_PATH: /home/daniil/Рабочий стол/диплом/Auto_Observability/prometheus_manager/app/services/prometheus
     ports:
       - "8003:8000"
     depends_on:
@@ -214,7 +296,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ""
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
     container_name: auto_observability_frontend
     ports:
       - "3000:80"

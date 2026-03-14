@@ -96,7 +96,6 @@ async def get_full_config() -> Dict:
         return result
     except Exception as e:
         error_str = str(e)
-        # Если конфиг не найден, возвращаем пустую структуру вместо ошибки
         if "NoSuchKey" in error_str or "does not exist" in error_str:
             return {
                 'main_config': None,

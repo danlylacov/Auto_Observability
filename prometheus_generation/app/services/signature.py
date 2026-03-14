@@ -13,10 +13,33 @@ class Signature:
         """
         Инициализация класса Signature.
 
-        Определяет путь к файлу signatures.yml в текущей директории.
+        Определяет путь к файлу signatures.yml в корне проекта.
         """
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        self.signatures_path = os.path.join(current_dir, 'signatures.yml')
+        if os.path.exists('/app/signatures.yml'):
+            self.signatures_path = '/app/signatures.yml'
+        else:
+            current_file = os.path.abspath(__file__)
+            current_dir = os.path.dirname(current_file)
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+            signatures_path = os.path.join(project_root, 'signatures.yml')
+            
+            if not os.path.exists(signatures_path):
+                cwd = os.getcwd()
+                if os.path.basename(cwd) == 'prometheus_generation':
+                    project_root = os.path.dirname(cwd)
+                    signatures_path = os.path.join(project_root, 'signatures.yml')
+                if not os.path.exists(signatures_path):
+                    test_paths = [
+                        os.path.join(cwd, 'signatures.yml'),
+                        os.path.join(os.path.dirname(cwd), 'signatures.yml'),
+                        os.path.join(os.path.dirname(os.path.dirname(cwd)), 'signatures.yml'),
+                    ]
+                    for test_path in test_paths:
+                        if os.path.exists(test_path):
+                            signatures_path = test_path
+                            break
+            
+            self.signatures_path = signatures_path
 
     def get(self) -> str:
         """

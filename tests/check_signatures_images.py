@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Скрипт для проверки доступности Docker образов из signatures.yml.
 
@@ -13,7 +12,7 @@ from typing import Dict, List, Tuple, Optional
 import yaml
 import subprocess
 
-SIGNATURES_PATH = "../prometheus_generation/app/services/signatures.yml"
+SIGNATURES_PATH = "../signatures.yml"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +36,6 @@ def log(message: str, level: str = "INFO"):
         "WARNING": "\033[93m",
         "RESET": "\033[0m"
     }
-    logger.info(f"{colors.get(level, '')}[{level}]{colors['RESET']} {message}")
 
 
 def load_signatures() -> Dict:

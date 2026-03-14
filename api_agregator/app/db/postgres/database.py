@@ -1,6 +1,7 @@
 """Database connection and session management."""
 
 import os
+from pathlib import Path
 from typing import Generator
 
 from dotenv import load_dotenv
@@ -8,10 +9,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-load_dotenv()
+_api_root = Path(__file__).parent.parent.parent.parent
+_env_dev = _api_root / '.env.dev'
+_env_file = _api_root / '.env'
 
-# Формируем DATABASE_URL из отдельных переменных или используем готовую строку
-# Приоритет: DATABASE_URL > отдельные переменные > дефолтное значение
+if _env_dev.exists():
+    load_dotenv(_env_dev, override=True)  # override=True перезаписывает существующие переменные
+elif _env_file.exists():
+    load_dotenv(_env_file, override=True)
+else:
+    load_dotenv(override=True)
+
 if not os.getenv("DATABASE_URL"):
     postgres_host = os.getenv("POSTGRES_HOST", "postgres")
     postgres_port = os.getenv("POSTGRES_PORT", "5432")

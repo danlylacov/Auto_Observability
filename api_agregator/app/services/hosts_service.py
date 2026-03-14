@@ -97,10 +97,8 @@ class HostsService:
         for host in hosts:
             result[host.id] = {'name': host.name, 'host': host.host, 'port': host.port}
             try:
-                # Преобразуем localhost в host.docker.internal для Docker
                 resolved_host = self._resolve_host_for_docker(host.host)
                 base_url = f"http://{resolved_host}:{host.port}"
-                # Используем короткий таймаут для избежания зависаний
                 response = requests.get(f'{base_url}/health', timeout=3)
                 result[host.id]['status'] = response.status_code
             except requests.exceptions.Timeout:
@@ -108,11 +106,8 @@ class HostsService:
             except requests.exceptions.ConnectionError:
                 result[host.id]['status'] = 'down'
             except Exception as e:
-                # Логируем другие ошибки, но не прерываем процесс
-                logger.warning(f"Error checking host {host.id}: {e}")
                 result[host.id]['status'] = 'down'
         
-        # Удаляем все старые хосты и загружаем новые
         self.redis_hosts.delete_hosts()
         self.redis_hosts.upload_hosts(result)
         return result
@@ -145,7 +140,6 @@ class HostsService:
         Returns:
             str: Преобразованный адрес хоста
         """
-        # Если запущено в Docker и хост localhost/127.0.0.1, используем host.docker.internal
         import os
         if os.path.exists('/.dockerenv'):
             if host in ('localhost', '127.0.0.1', '0.0.0.0'):
@@ -165,24 +159,19 @@ class HostsService:
             str: Статус хоста ('up', 'down', 'timeout', 'local_only')
         """
         try:
-            # Преобразуем localhost в host.docker.internal для Docker
             resolved_host = self._resolve_host_for_docker(host)
             base_url = f"http://{resolved_host}:{port}"
             response = requests.get(f'{base_url}/health', timeout=2)
             return str(response.status_code) if response.status_code == 200 else 'down'
         except requests.exceptions.Timeout:
-            # Для localhost хостов, которые недоступны из контейнера, используем 'local_only'
             if host in ('localhost', '127.0.0.1', '0.0.0.0'):
                 return 'local_only'
             return 'timeout'
         except requests.exceptions.ConnectionError:
-            # Для localhost хостов, которые недоступны из контейнера, используем 'local_only'
             if host in ('localhost', '127.0.0.1', '0.0.0.0'):
                 return 'local_only'
             return 'down'
         except Exception as e:
-            logger.warning(f"Error checking host {host_id}: {e}")
-            # Для localhost хостов, которые недоступны из контейнера, используем 'local_only'
             if host in ('localhost', '127.0.0.1', '0.0.0.0'):
                 return 'local_only'
             return 'down'

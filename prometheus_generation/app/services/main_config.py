@@ -1,4 +1,7 @@
 import logging
+from typing import Any, Dict, List, Optional
+
+import docker
 
 from app.services.minio import MinioService
 
@@ -19,6 +22,58 @@ class MainPrometheusConfig:
         """
         self.bucket = 'prometheus'
         self.minio_client = MinioService()
+
+    def _get_exporter_host_port(self) -> Optional[str]:
+        """
+        Получает внешний порт экспортера на хосте.
+        Убирает выбор порта - всегда использует первый найденный внешний порт экспортера.
+
+        Returns:
+            Optional[str]: Внешний порт на хосте или None, если не найден
+        """
+        try:
+            docker_client = docker.from_env()
+            for container in docker_client.containers.list(all=True):
+                if 'exporter' in container.name.lower():
+                    ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
+                    for internal_port, port_bindings in ports.items():
+                        if port_bindings and len(port_bindings) > 0:
+                            host_port = port_bindings[0].get('HostPort')
+                            if host_port:
+                                return host_port
+        except Exception as e:
+            pass
+
+    def _fix_target_port(self, target: List[Dict[str, Any]] | Dict[str, Any]) -> List[Dict[str, Any]] | Dict[str, Any]:
+        """
+        Исправляет порт в target на внешний порт хоста экспортера.
+        Всегда использует внешний порт хоста вместо внутреннего порта контейнера.
+
+        Args:
+            target: Конфигурация target (может быть списком или словарем)
+
+        Returns:
+            Исправленная конфигурация target
+        """
+        if isinstance(target, dict):
+            target = [target]
+        
+        host_port = self._get_exporter_host_port()
+        if not host_port:
+            return target if isinstance(target, list) else target[0] if target else {}
+        
+        for target_item in target:
+            if isinstance(target_item, dict) and 'targets' in target_item:
+                targets_list = target_item.get('targets', [])
+                for i, target_address in enumerate(targets_list):
+                    if isinstance(target_address, str) and ':' in target_address:
+                        host_part = target_address.split(':')[0]
+                        port_part = target_address.split(':')[-1]
+                        new_target = f"{host_part}:{host_port}"
+                        if target_address != new_target:
+                            targets_list[i] = new_target
+        
+        return target if isinstance(target, list) else target[0] if target else {}
 
     def first_init(self):
         """
@@ -84,7 +139,6 @@ class MainPrometheusConfig:
         main_config = self.minio_client.get_yaml_file('mainConfig/prometheus.yml')
 
         if main_config is None:
-            logger.warning("Основной конфиг не найден")
             return False
 
         if 'scrape_configs' in main_config:
@@ -100,10 +154,7 @@ class MainPrometheusConfig:
         )
 
         target_path = f'mainConfig/targets/{target_name}'
-        deleted = self.minio_client.delete_file(target_path)
-
-        if not deleted:
-            logger.warning(f"Не удалось удалить файл targets: {target_path}")
+        self.minio_client.delete_file(target_path)
 
         return True
 
