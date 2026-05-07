@@ -1,6 +1,12 @@
+import sys
+import importlib
 from types import SimpleNamespace
 
 import pytest
+
+# Настраиваем алиас 'app' для api_agregator перед импортами
+import api_agregator.app as api_app_module
+sys.modules["app"] = api_app_module
 
 from api_agregator.app.services.api_getaway import APIGateway
 from api_agregator.app.services.hosts_service import HostDTO, HostsService

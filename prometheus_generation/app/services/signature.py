@@ -20,7 +20,8 @@ class Signature:
         else:
             current_file = os.path.abspath(__file__)
             current_dir = os.path.dirname(current_file)
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+            # /app/app/services -> /app
+            project_root = os.path.dirname(os.path.dirname(current_dir))
             signatures_path = os.path.join(project_root, 'signatures.yml')
             
             if not os.path.exists(signatures_path):
