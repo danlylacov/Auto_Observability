@@ -2,6 +2,7 @@ import logging
 from typing import Optional, Dict, Any
 
 import requests
+from requests.exceptions import Timeout, ConnectionError, RequestException
 from fastapi import HTTPException
 from starlette import status
 
@@ -82,6 +83,9 @@ class APIGateway:
 
             return response.json()
 
+        except HTTPException:
+            # Перехватываем HTTPException и пробрасываем дальше
+            raise
         except requests.exceptions.Timeout as e:
             logger.error(f"Request timeout to {url}: {str(e)}")
             raise HTTPException(
@@ -100,8 +104,6 @@ class APIGateway:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Request error: {str(e)}"
             )
-        except HTTPException:
-            raise
         except Exception as e:
             logger.error(f"Unexpected error in API Gateway: {str(e)}", exc_info=True)
             raise HTTPException(

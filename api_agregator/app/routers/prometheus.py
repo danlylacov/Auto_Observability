@@ -87,6 +87,21 @@ async def generate_config(
         info.get("Config", {}).get("Hostname", "unknown")
     )
 
+    # Use container-reachable address for Prometheus targets.
+    network_settings = info.get("NetworkSettings", {})
+    networks = network_settings.get("Networks", {}) or {}
+    labels = info.get("Config", {}).get("Labels", {}) or {}
+
+    target_address = host
+    if "bridge" in networks:
+        bridge_ip = (networks.get("bridge") or {}).get("IPAddress")
+        if bridge_ip:
+            target_address = bridge_ip
+    elif labels.get("com.docker.compose.service"):
+        target_address = labels["com.docker.compose.service"]
+    elif container_name:
+        target_address = container_name
+
     stack = None
     if classification.get("result"):
         stack = classification["result"][0][0] if classification["result"] else None
@@ -101,7 +116,7 @@ async def generate_config(
         method='POST',
         endpoint='/api/v1/generate/',
         json_data=container_data,
-        params={'host': host}
+        params={'host': target_address}
     )
 
     exporter_config = config_data.get("info", {})
@@ -146,7 +161,7 @@ async def generate_config(
             'stack': stack,
             'exporter_image': exporter_image,
             'exporter_port': exporter_port,
-            'target_address': host,
+            'target_address': target_address,
             'job_name': job_name,
             'network': network_name,
             'exporter_env_vars': exporter_config.get("env_vars", {}),
@@ -163,7 +178,7 @@ async def generate_config(
         existing_config.stack = stack
         existing_config.exporter_image = exporter_image
         existing_config.exporter_port = exporter_port
-        existing_config.target_address = host
+        existing_config.target_address = target_address
         existing_config.job_name = job_name
         existing_config.minio_bucket = config_file.get("bucket")
         existing_config.minio_file_path = config_file.get("file")
@@ -178,7 +193,7 @@ async def generate_config(
             stack=stack,
             exporter_image=exporter_image,
             exporter_port=exporter_port,
-            target_address=host,
+            target_address=target_address,
             job_name=job_name,
             minio_bucket=config_file.get("bucket"),
             minio_file_path=config_file.get("file"),

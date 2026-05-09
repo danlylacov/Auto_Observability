@@ -101,6 +101,3 @@ class GrafanaTemplateLoader:
 
         for panel in dashboard.get('panels', []):
             process_element(panel)
-
-a = GrafanaTemplateLoader()
-print(a.fetch_dashboard_json('9628'))

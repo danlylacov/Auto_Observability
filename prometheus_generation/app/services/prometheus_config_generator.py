@@ -29,7 +29,8 @@ class PrometheusConfigGenerator:
                 signatures_path = '/app/signatures.yml'
             else:
                 current_file = os.path.abspath(__file__)
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+                # /app/app/services/<file>.py -> /app
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
                 signatures_path = os.path.join(project_root, 'signatures.yml')
 
         self.signatures_path = signatures_path

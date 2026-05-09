@@ -13,6 +13,8 @@ boto3
 
 aiohttp
 
+requests>=2.31.0
+
 
 
 

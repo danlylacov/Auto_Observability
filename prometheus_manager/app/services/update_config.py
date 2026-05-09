@@ -149,7 +149,10 @@ class UpdateConfig:
                             host_part == 'localhost')
 
                 if needs_fix:
-                    new_target = f"localhost:{port_part}"
+                    # Prometheus runs in host network mode, so it must use
+                    # exporter host-published port, not container internal port.
+                    host_port = self._get_exporter_host_port(port_part) or port_part
+                    new_target = f"localhost:{host_port}"
                     targets_list[i] = new_target
 
 
