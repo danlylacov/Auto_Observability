@@ -1,67 +1,25 @@
-import logging
-
 from fastapi import FastAPI
 
-from app.routers import generate, main_config, signature
-from app.services.main_config import MainPrometheusConfig
-
-logger = logging.getLogger(__name__)
+from app.routers import dashboard
 
 app = FastAPI(
-    title="Prometheus Generation API",
+    title="Grafana Generation API",
     version="1.0.0",
-    description="API documentation"
+    description="Скачивание шаблонов дашбордов с grafana.com и подготовка к импорту",
 )
 
-app.include_router(signature.router, prefix="/api/v1/signature", tags=["signature"])
-app.include_router(generate.router, prefix="/api/v1/generate", tags=["generate"])
-app.include_router(main_config.router, prefix="/api/v1/main-config", tags=["main-config"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Инициализация при старте приложения.
-    
-    Проверяет наличие основного конфига Prometheus в MinIO
-    и создает его при первом запуске, если он отсутствует.
-    """
-    try:
-        config = MainPrometheusConfig()
-        main_config = config.minio_client.get_yaml_file('mainConfig/prometheus.yml')
-        
-        if main_config is None:
-            print("INFO: Основной конфиг Prometheus не найден. Создаю базовый конфиг...")
-            config.first_init()
-            print("INFO: Базовый конфиг Prometheus успешно создан в MinIO")
-        else:
-            print("INFO: Основной конфиг Prometheus найден в MinIO")
-    except Exception as e:
-        print(f"ERROR: Ошибка при инициализации конфига Prometheus: {e}")
-        logger.error(f"Ошибка при инициализации конфига Prometheus: {e}", exc_info=True)
+app.include_router(dashboard.router, prefix="/api/v1/grafana", tags=["grafana-dashboards"])
 
 
 @app.get("/")
 async def root():
-    """
-    Корневой эндпоинт API.
-
-    Returns:
-        dict: Информация об API
-    """
     return {
-        "message": "Prometheus Generation API",
+        "message": "Grafana Generation API",
         "docs": "/docs",
-        "version": app.version
+        "version": app.version,
     }
 
 
 @app.get("/health")
 async def health_check():
-    """
-    Проверка здоровья API.
-
-    Returns:
-        dict: Статус здоровья
-    """
     return {"status": "healthy"}
