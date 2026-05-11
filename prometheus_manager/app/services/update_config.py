@@ -3,7 +3,6 @@ import os
 from typing import Any, Dict, List, Optional
 
 import boto3
-import docker
 import yaml
 from botocore.client import Config
 from botocore.exceptions import ClientError
@@ -85,30 +84,6 @@ class UpdateConfig:
             logger.error(f"Ошибка при получении списка файлов: {e}")
             return []
 
-    def _get_exporter_host_port(self, container_port: str) -> Optional[str]:
-        """
-        Получает внешний порт экспортера на хосте.
-        Убирает выбор порта - всегда использует первый найденный внешний порт экспортера.
-
-        Args:
-            container_port: Внутренний порт контейнера (игнорируется, используется для логирования)
-
-        Returns:
-            Optional[str]: Внешний порт на хосте или None, если не найден
-        """
-        try:
-            docker_client = docker.from_env()
-            for container in docker_client.containers.list(all=True):
-                if 'exporter' in container.name.lower():
-                    ports = container.attrs.get('NetworkSettings', {}).get('Ports', {})
-                    for internal_port, port_bindings in ports.items():
-                        if port_bindings and len(port_bindings) > 0:
-                            host_port = port_bindings[0].get('HostPort')
-                            if host_port:
-                                return host_port
-        except Exception as e:
-            pass
-
     def _fix_target_for_host_network(self, target: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Исправляет адрес target для работы с network_mode: host.
@@ -149,11 +124,10 @@ class UpdateConfig:
                             host_part == 'localhost')
 
                 if needs_fix:
-                    # Prometheus runs in host network mode, so it must use
-                    # exporter host-published port, not container internal port.
-                    host_port = self._get_exporter_host_port(port_part) or port_part
-                    new_target = f"localhost:{host_port}"
-                    targets_list[i] = new_target
+                    # Keep explicit port from target file and normalize host only.
+                    # Choosing "first exporter host port" is non-deterministic and can
+                    # break scrapes when multiple exporters are running.
+                    targets_list[i] = f"localhost:{port_part}"
 
 
         return target

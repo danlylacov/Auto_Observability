@@ -9,6 +9,8 @@ from app.db.postgres.database import Base, engine
 # Import all models to ensure they are registered with Base.metadata
 from app.models.postgres import Container, Host, PrometheusConfig
 
+import app.models.postgres.grafana_dashboard  # noqa: F401 регистрирует GrafanaDashboard в metadata
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,

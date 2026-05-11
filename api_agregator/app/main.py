@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-from app.routers import containers, hosts, prometheus
+from app.routers import containers, grafana, hosts, prometheus
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,7 @@ async def database_error_handler(_request: Request, exc: SQLAlchemyError):
 app.include_router(containers.router, prefix="/api/v1/containers", tags=["containers"])
 app.include_router(prometheus.router, prefix="/api/v1/prometheus", tags=["prometheus"])
 app.include_router(hosts.router, prefix="/api/v1/hosts", tags=["hosts"])
+app.include_router(grafana.router, prefix="/api/v1/grafana", tags=["grafana"])
 
 
 @app.get("/")

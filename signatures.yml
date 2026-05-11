@@ -13,6 +13,14 @@ mongodb:
   exporter_port: 9216
   metrics_path: "/metrics"
   exporter_image: "percona/mongodb_exporter:0.39"
+  # Optional overrides for slower exporters / large scrapes — any stack can set these keys.
+  scrape_timeout: 30s
+  exporter_command:
+    - "--compatible-mode"
+    - "--collector.diagnosticdata"
+    - "--collector.replicasetstatus"
+    - "--collector.dbstats"
+    - "--collector.topmetrics"
   env_vars:
     MONGODB_URI: "mongodb://localhost:27017"
   env_template: "mongodb://{user}:{password}@{host}:{port}/{database}"

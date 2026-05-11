@@ -1,6 +1,7 @@
 """Тесты для сервисов Prometheus Generation."""
 
 import sys
+import importlib
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
 import yaml
@@ -8,6 +9,13 @@ import yaml
 # Настраиваем алиас 'app' для prometheus_generation перед импортами
 import prometheus_generation.app as prometheus_generation_app_module
 sys.modules["app"] = prometheus_generation_app_module
+# Без этого getattr(prometheus_generation.app, 'services') и ключ
+# sys.modules['prometheus_generation.app.services'] — разные модули, и unittest.mock.patch
+# на prometheus_generation.app.services.... не находит prometheus_config_generator.
+_services_pkg = importlib.import_module("prometheus_generation.app.services")
+prometheus_generation_app_module.services = _services_pkg
+sys.modules["app.services"] = _services_pkg
+importlib.import_module("prometheus_generation.app.services.prometheus_config_generator")
 
 from prometheus_generation.app.services.prometheus_config_generator import PrometheusConfigGenerator
 from prometheus_generation.app.services.main_config import MainPrometheusConfig
@@ -119,6 +127,63 @@ class TestPrometheusConfigGenerator:
         
         assert result is None
 
+    @patch('prometheus_generation.app.services.prometheus_config_generator.os.path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data='nginx:\n  exporter_image: nginx-exporter')
+    @patch('prometheus_generation.app.services.prometheus_config_generator.yaml.safe_load')
+    def test_generate_config_scrape_timing_from_signature(self, mock_yaml_load, mock_file, mock_exists):
+        """scrape_interval / scrape_timeout берутся из signatures при наличии."""
+        mock_exists.return_value = True
+        mock_yaml_load.return_value = {
+            "nginx": {
+                "exporter_image": "nginx-exporter",
+                "exporter_port": 9100,
+                "scrape_interval": "20s",
+                "scrape_timeout": "45s",
+            }
+        }
+
+        generator = PrometheusConfigGenerator()
+
+        container_data = {
+            "info": {"Name": "/test-container", "NetworkSettings": {}},
+            "classification": {"result": [["nginx", 0.9]]}
+        }
+
+        with patch.object(generator.env_generator, 'generate_env_vars', return_value={}):
+            with patch.object(generator.env_generator, 'get_container_network', return_value=None):
+                result = generator.generate_config(container_data, "localhost:8080")
+
+        assert result is not None
+        scrape = result["config"]["scrape_config"]
+        assert scrape["scrape_interval"] == "20s"
+        assert scrape["scrape_timeout"] == "45s"
+
+    @patch('prometheus_generation.app.services.prometheus_config_generator.os.path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data='nginx:\n  exporter_image: nginx-exporter')
+    @patch('prometheus_generation.app.services.prometheus_config_generator.yaml.safe_load')
+    def test_generate_config_default_scrape_timeout(self, mock_yaml_load, mock_file, mock_exists):
+        """Без scrape_timeout в сигнатуре используется увеличенный дефолт для медленных /metrics."""
+        mock_exists.return_value = True
+        mock_yaml_load.return_value = {
+            "nginx": {
+                "exporter_image": "nginx-exporter",
+                "exporter_port": 9100,
+            }
+        }
+
+        generator = PrometheusConfigGenerator()
+
+        container_data = {
+            "info": {"Name": "/tc", "NetworkSettings": {}},
+            "classification": {"result": [["nginx", 0.9]]}
+        }
+
+        with patch.object(generator.env_generator, 'generate_env_vars', return_value={}):
+            with patch.object(generator.env_generator, 'get_container_network', return_value=None):
+                result = generator.generate_config(container_data, "host")
+
+        assert result["config"]["scrape_config"]["scrape_timeout"] == "30s"
+
 
 class TestMainPrometheusConfig:
     """Тесты для MainPrometheusConfig."""
@@ -172,11 +237,14 @@ class TestMainPrometheusConfig:
             "global": {"scrape_interval": "15s"},
             "scrape_configs": []
         }
+        mock_minio_service.list_files.return_value = []
         mock_minio_service_class.return_value = mock_minio_service
         
         config = MainPrometheusConfig()
         result = config.get_full_config()
         
-        assert "global" in result
-        assert "scrape_configs" in result
+        assert "main_config" in result and "targets" in result
+        mc = result["main_config"]
+        assert "global" in mc
+        assert "scrape_configs" in mc
 

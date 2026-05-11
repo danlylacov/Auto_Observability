@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import docker
 import yaml
@@ -85,6 +85,20 @@ class PrometheusConfigGenerator:
             return result[0][0]
         return None
 
+    @staticmethod
+    def _scraping_timing(value: Optional[Union[int, float, str]], default: str) -> str:
+        """Prometheus duration string from signatures.yml (int/float interpreted as seconds)."""
+        if value is None or value == "":
+            return default
+        if isinstance(value, bool):
+            return default
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and value != int(value):
+                return f"{value}s"
+            return f"{int(value)}s"
+        parsed = str(value).strip()
+        return parsed if parsed else default
+
     def _normalize_stack_name(self, stack: str) -> str:
         """
         Нормализует название стека для поиска в конфигурациях.
@@ -144,10 +158,17 @@ class PrometheusConfigGenerator:
 
         job_name = f"{container_name}{exporter_config.get('job_name_suffix', '')}"
 
+        scrape_interval = self._scraping_timing(
+            exporter_config.get('scrape_interval'), '15s'
+        )
+        scrape_timeout = self._scraping_timing(
+            exporter_config.get('scrape_timeout'), '30s'
+        )
+
         scrape_config = {
             'job_name': job_name,
-            'scrape_interval': '15s',
-            'scrape_timeout': '10s',
+            'scrape_interval': scrape_interval,
+            'scrape_timeout': scrape_timeout,
             'file_sd_configs': [
                 {
                     'files': [f'targets/{job_name}.yml']

@@ -366,3 +366,76 @@ export const prometheusApi = {
   }
 }
 
+export interface GrafanaTemplateEntry {
+  dashboard_id?: number
+  title?: string
+  [key: string]: unknown
+}
+
+export interface GrafanaImportedItem {
+  id: number
+  uid: string
+  title: string | null
+  template_key: string | null
+  source_dashboard_id: number | null
+  slug: string | null
+  url: string | null
+  created_at: string | null
+}
+
+export interface GrafanaEligibleContainer {
+  config_id: number
+  container_id: string
+  container_name: string
+  stack: string
+  job_name: string
+  host_name: string
+  target_address: string
+  exporter_port: number
+  exporter_running: boolean
+  exporter_status: string | null
+  in_main_config: boolean
+  metrics_ready: boolean
+  config_metadata: any
+}
+
+export const grafanaApi = {
+  async getTemplates(): Promise<Record<string, GrafanaTemplateEntry>> {
+    const response = await api.get<{ templates: Record<string, GrafanaTemplateEntry> }>(
+      '/api/v1/grafana/templates'
+    )
+    return response.data.templates || {}
+  },
+
+  async importDashboard(payload: {
+    template_key?: string
+    dashboard_id?: number
+    prometheus_datasource_uid?: string
+    instance_suffix?: string
+    title_prefix?: string
+    overwrite?: boolean
+  }): Promise<any> {
+    const response = await api.post('/api/v1/grafana/import_dashboard', payload)
+    return response.data
+  },
+
+  async listImported(): Promise<GrafanaImportedItem[]> {
+    const response = await api.get<{ items: GrafanaImportedItem[] }>(
+      '/api/v1/grafana/imported_dashboards'
+    )
+    return response.data.items || []
+  },
+
+  async listEligibleContainers(): Promise<GrafanaEligibleContainer[]> {
+    const response = await api.get<{ items: GrafanaEligibleContainer[] }>(
+      '/api/v1/grafana/eligible_containers'
+    )
+    return response.data.items || []
+  },
+
+  async deleteImported(databaseId: number): Promise<any> {
+    const response = await api.delete(`/api/v1/grafana/imported_dashboards/${databaseId}`)
+    return response.data
+  }
+}
+

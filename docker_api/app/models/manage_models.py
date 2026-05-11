@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional, Dict, Union, List
 
 from pydantic import BaseModel, Field
 
@@ -41,7 +41,7 @@ class FullContainer(BaseModel):
     """
 
     image_name: str = Field(None, max_length=500)
-    command: Optional[str] = Field(None, max_length=500)
+    command: Optional[Union[str, List[str]]] = None
     name: Optional[str] = Field(None, max_length=500)
     detach: bool = Field(True)
     ports: Optional[Dict[str, int]] = Field(None)

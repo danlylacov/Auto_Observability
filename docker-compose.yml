@@ -85,6 +85,7 @@ services:
       DOCKER_API_URL: http://docker_api:8000
       PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
       DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
+      GRAFANA_GENERATION_URL: http://grafana_generation:8000
     ports:
       - "8081:8000"
     depends_on:
@@ -93,6 +94,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      grafana_generation:
         condition: service_healthy
     networks:
       - app_network
@@ -318,6 +321,32 @@ services:
       timeout: 10s
       retries: 3
 
+  # Grafana dashboard generation + import API
+  grafana_generation:
+    build:
+      context: ./grafana_generation
+      dockerfile: Dockerfile
+      network: host
+    container_name: auto_observability_grafana_generation
+    environment:
+      # По умолчанию как в grafana_manager/grafana_settings.yml (Grafana на хосте :3052)
+      GRAFANA_URL: ${GRAFANA_URL:-http://host.docker.internal:3052}
+      GRAFANA_USER: ${GRAFANA_USER:-admin}
+      GRAFANA_PASSWORD: ${GRAFANA_PASSWORD:-Passw0rd}
+      DEFAULT_PROMETHEUS_DS_UID: ${DEFAULT_PROMETHEUS_DS_UID:-prometheus}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Порт только при отладке; api_agregator ходит на http://grafana_generation:8000 внутри сети.
+    ports:
+      - "${GRAFANA_GENERATION_HOST_PORT:-18010}:8000"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Frontend
   frontend:
     build:
@@ -326,6 +355,7 @@ services:
       network: host
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
+        VITE_GRAFANA_EXTERNAL_URL: ${VITE_GRAFANA_EXTERNAL_URL:-http://localhost:3052}
     container_name: auto_observability_frontend
     ports:
       - "3000:80"
