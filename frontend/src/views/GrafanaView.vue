@@ -232,16 +232,10 @@ async function loadEligible () {
 }
 
 async function loadAll () {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/271fd3c1-b718-4e6d-998e-76e80a8d4de6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a72628'},body:JSON.stringify({sessionId:'a72628',runId:'pre-fix',hypothesisId:'H4',location:'frontend/src/views/GrafanaView.vue:loadAll',message:'loadAll invoked',data:{selectedTemplate:selectedTemplate.value,prometheusDsUid:prometheusDsUid.value},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   await Promise.all([loadTemplates(), loadEligible(), loadImported()])
 }
 
 async function importForContainer (row: GrafanaEligibleContainer) {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/271fd3c1-b718-4e6d-998e-76e80a8d4de6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a72628'},body:JSON.stringify({sessionId:'a72628',runId:'pre-fix',hypothesisId:'H4',location:'frontend/src/views/GrafanaView.vue:importForContainer',message:'user requested dashboard import',data:{config_id:row.config_id,container_name:row.container_name,job_name:row.job_name,metrics_ready:row.metrics_ready,selectedTemplate:selectedTemplate.value,prometheusDsUid:prometheusDsUid.value},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!row.metrics_ready) {
     showToast('Container is not ready: exporter must be running and metrics must be in main Prometheus config', 'error')
     return
@@ -257,9 +251,6 @@ async function importForContainer (row: GrafanaEligibleContainer) {
   if (selectedTemplate.value && selectedTemplate.value !== effectiveTemplate) {
     showToast(`Выбранный шаблон ${selectedTemplate.value} не подходит для stack ${row.stack}. Использую ${effectiveTemplate}.`, 'info')
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/271fd3c1-b718-4e6d-998e-76e80a8d4de6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a72628'},body:JSON.stringify({sessionId:'a72628',runId:'post-fix',hypothesisId:'H9',location:'frontend/src/views/GrafanaView.vue:importForContainer',message:'resolved template for container import',data:{container_name:row.container_name,stack:row.stack,selectedTemplate:selectedTemplate.value,effectiveTemplate},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   importingByConfig.value[row.config_id] = true
   try {
     await grafanaApi.importDashboard({

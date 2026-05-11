@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import logging
 import os
-import json
-import time
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -20,12 +17,10 @@ from app.models.postgres.prometheus_config import PrometheusConfig
 from app.services.api_getaway import APIGateway
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 load_dotenv()
 grafana_generation_url = os.getenv("GRAFANA_GENERATION_URL")
 prometheus_generation_url = os.getenv("PROMETHEUS_GENERATION_URL")
-DEBUG_LOG_PATH = "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
 
 
 def _generation_gateway() -> APIGateway:
@@ -55,25 +50,6 @@ def _main_config_jobs() -> set[str]:
         return set()
 
 
-def _debug_log(message: str, data: dict[str, Any], *, run_id: str, hypothesis_id: str, location: str) -> None:
-    # region agent log
-    try:
-        payload = {
-            "sessionId": "a72628",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-    # endregion
-
-
 class ImportDashboardBody(BaseModel):
     template_key: Optional[str] = Field(None)
     dashboard_id: Optional[int] = None
@@ -96,18 +72,6 @@ async def import_dashboard(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Загружает шаблон, переписывает datasource Prometheus, импортирует в Grafana."""
-    _debug_log(
-        "grafana import request",
-        {
-            "template_key": body.template_key,
-            "dashboard_id": body.dashboard_id,
-            "prometheus_datasource_uid": body.prometheus_datasource_uid,
-            "overwrite": body.overwrite,
-        },
-        run_id="pre-fix",
-        hypothesis_id="H3",
-        location="api_agregator/app/routers/grafana.py:import_dashboard:request",
-    )
     gw = _generation_gateway()
     payload = body.model_dump(exclude_none=True)
 
@@ -145,25 +109,6 @@ async def import_dashboard(
                     pass
     if resolved_template:
         payload["template_key"] = resolved_template
-    logger.info(
-        "Grafana import template resolution: suffix=%s requested=%s stack=%s resolved=%s",
-        body.instance_suffix,
-        body.template_key,
-        resolved_stack,
-        resolved_template,
-    )
-    _debug_log(
-        "grafana import template resolution",
-        {
-            "requested_template": body.template_key,
-            "resolved_template": resolved_template,
-            "instance_suffix": body.instance_suffix,
-            "resolved_stack": resolved_stack,
-        },
-        run_id="post-fix",
-        hypothesis_id="H10",
-        location="api_agregator/app/routers/grafana.py:import_dashboard:template_resolution",
-    )
     resp = gw.make_request(
         "POST",
         "/api/v1/grafana/import_dashboard",
@@ -207,19 +152,6 @@ async def import_dashboard(
 
     db.commit()
     db.refresh(row)
-    _debug_log(
-        "grafana import response",
-        {
-            "uid": uid,
-            "title": title,
-            "template_key": tmpl_key,
-            "source_dashboard_id": sid,
-            "url": resp.get("url"),
-        },
-        run_id="pre-fix",
-        hypothesis_id="H1",
-        location="api_agregator/app/routers/grafana.py:import_dashboard:response",
-    )
     return {"db_record_id": row.id, **resp}
 
 
@@ -312,26 +244,6 @@ async def list_eligible_containers(db: Session = Depends(get_db)) -> dict[str, A
                 "config_metadata": metadata,
             }
         )
-    _debug_log(
-        "eligible containers computed",
-        {
-            "total": len(rows),
-            "ready_count": sum(1 for r in rows if r.get("metrics_ready")),
-            "items": [
-                {
-                    "container_name": r.get("container_name"),
-                    "job_name": r.get("job_name"),
-                    "exporter_running": r.get("exporter_running"),
-                    "in_main_config": r.get("in_main_config"),
-                    "metrics_ready": r.get("metrics_ready"),
-                }
-                for r in rows
-            ],
-        },
-        run_id="pre-fix",
-        hypothesis_id="H2",
-        location="api_agregator/app/routers/grafana.py:eligible_containers",
-    )
     return {"items": rows}
 
 

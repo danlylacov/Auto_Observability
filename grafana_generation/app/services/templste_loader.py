@@ -2,7 +2,6 @@ import hashlib
 import json
 import os
 import re
-import time
 import uuid
 from copy import deepcopy
 from typing import Any
@@ -15,7 +14,6 @@ class GrafanaTemplateLoader:
     """Загрузка дашбордов с grafana.com и подготовка под локальный источник Prometheus."""
 
     GRAFANA_COM_API = "https://grafana.com/api/dashboards"
-    DEBUG_LOG_PATH = "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
 
     def __init__(self, cache_dir: str = "./.dashboard_cache", templates_path: str | None = None):
         self.cache_dir = cache_dir
@@ -237,26 +235,6 @@ class GrafanaTemplateLoader:
 
         walk(dash)
 
-    @staticmethod
-    def _debug_log(message: str, data: dict[str, Any], *, run_id: str, hypothesis_id: str, location: str) -> None:
-        # region agent log
-        try:
-            payload = {
-                "sessionId": "a72628",
-                "runId": run_id,
-                "hypothesisId": hypothesis_id,
-                "location": location,
-                "message": message,
-                "data": data,
-                "timestamp": int(time.time() * 1000),
-            }
-            with open(GrafanaTemplateLoader.DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-        # endregion
-
-
     def prepare_for_import(
         self,
         dashboard: dict[str, Any],
@@ -287,22 +265,8 @@ class GrafanaTemplateLoader:
         if source_dashboard_id == 7353:
             self.patch_mongodb_7353_templating(dash)
             self.patch_mongodb_7353_compatible_metrics(dash)
-            self._debug_log(
-                "applied mongodb dashboard compatible metric names",
-                {"dashboard_id": source_dashboard_id, "uid": dash.get("uid"), "title": dash.get("title")},
-                run_id="mongo-fix",
-                hypothesis_id="H13",
-                location="grafana_generation/app/services/templste_loader.py:prepare_for_import:mongodb-compat",
-            )
         if source_dashboard_id == 9628:
             self.patch_postgresql_9628(dash)
-            self._debug_log(
-                "applied postgres dashboard patch",
-                {"dashboard_id": source_dashboard_id, "uid": dash.get("uid"), "title": dash.get("title")},
-                run_id="postgres-run",
-                hypothesis_id="H8",
-                location="grafana_generation/app/services/templste_loader.py:prepare_for_import",
-            )
 
         # Удалить возможные временные ключи Grafana.com
         if "meta" in dash:

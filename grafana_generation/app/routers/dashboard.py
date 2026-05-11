@@ -1,7 +1,5 @@
 import logging
 import os
-import json
-import time
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -11,26 +9,6 @@ from app.services.templste_loader import GrafanaTemplateLoader
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-DEBUG_LOG_PATH = "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
-
-
-def _debug_log(message: str, data: dict, *, run_id: str, hypothesis_id: str, location: str) -> None:
-    # region agent log
-    try:
-        payload = {
-            "sessionId": "a72628",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-    # endregion
 
 
 class ImportDashboardRequest(BaseModel):
@@ -94,32 +72,6 @@ async def import_dashboard(req: ImportDashboardRequest):
             prepared,
             prometheus_ds_uid=default_ds_uid,
             overwrite=req.overwrite,
-        )
-        _debug_log(
-            "grafana_generation import prepared",
-            {
-                "template_key": tmpl_key,
-                "dashboard_source_id": tid,
-                "prepared_uid": prepared.get("uid"),
-                "prepared_title": prepared.get("title"),
-                "prometheus_datasource_uid": default_ds_uid,
-                "api_uid": api_result.get("uid"),
-                "api_url": api_result.get("url"),
-                "api_slug": api_result.get("slug"),
-                "templating": [
-                    {
-                        "name": v.get("name"),
-                        "query": v.get("query"),
-                        "includeAll": v.get("includeAll"),
-                        "allValue": v.get("allValue"),
-                    }
-                    for v in ((prepared.get("templating") or {}).get("list") or [])
-                    if isinstance(v, dict) and v.get("name") in ("cluster", "host")
-                ],
-            },
-            run_id="pre-fix",
-            hypothesis_id="H1",
-            location="grafana_generation/app/routers/dashboard.py:import_dashboard",
         )
         out = dict(api_result)
         out.setdefault("dashboard_title", prepared.get("title"))

@@ -2,14 +2,11 @@
 
 import logging
 import os
-import json
-import time
 from typing import Any
 
 import requests
 
 logger = logging.getLogger(__name__)
-DEBUG_LOG_PATH = "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
 
 
 class GrafanaHttpError(Exception):
@@ -33,24 +30,6 @@ class GrafanaDashboardImporter:
     def is_configured(self) -> bool:
         return bool(self.base_url)
 
-    def _debug_log(self, message: str, data: dict[str, Any], *, run_id: str, hypothesis_id: str, location: str) -> None:
-        # region agent log
-        try:
-            payload = {
-                "sessionId": "a72628",
-                "runId": run_id,
-                "hypothesisId": hypothesis_id,
-                "location": location,
-                "message": message,
-                "data": data,
-                "timestamp": int(time.time() * 1000),
-            }
-            with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-        # endregion
-
     def _prometheus_url(self) -> str:
         return os.getenv("PROMETHEUS_URL", "http://host.docker.internal:9090")
 
@@ -61,13 +40,6 @@ class GrafanaDashboardImporter:
         get_url = f"{self.base_url}/api/datasources/uid/{ds_uid}"
         r = requests.get(get_url, auth=(self.user, self.password), timeout=30)
         if r.status_code == 200:
-            self._debug_log(
-                "grafana datasource exists",
-                {"uid": ds_uid},
-                run_id="post-fix",
-                hypothesis_id="H7",
-                location="grafana_generation/app/services/grafana_dashboard_importer.py:ensure_prometheus_datasource:exists",
-            )
             return
         if r.status_code not in (404,):
             raise GrafanaHttpError(r.status_code, f"Failed to check datasource UID {ds_uid}: {r.text}")
@@ -93,13 +65,6 @@ class GrafanaDashboardImporter:
         )
         if cr.status_code >= 400:
             raise GrafanaHttpError(cr.status_code, f"Failed to create datasource UID {ds_uid}: {cr.text}")
-        self._debug_log(
-            "grafana datasource created",
-            {"uid": ds_uid, "url": self._prometheus_url()},
-            run_id="post-fix",
-            hypothesis_id="H7",
-            location="grafana_generation/app/services/grafana_dashboard_importer.py:ensure_prometheus_datasource:created",
-        )
 
     def import_dashboard(
         self,

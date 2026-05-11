@@ -2,8 +2,6 @@
 
 import logging
 import os
-import json
-import time
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -27,7 +25,6 @@ load_dotenv()
 prometheus_generation_url = os.getenv("PROMETHEUS_GENERATION_URL")
 docker_api_url = os.getenv("DOCKER_API_URL")
 prometheus_manager_url = os.getenv("PROMETHEUS_MANAGER_URL")
-DEBUG_LOG_PATH = "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
 
 
 def get_prometheus_manager_gateway() -> APIGateway:
@@ -92,25 +89,6 @@ def _resolve_exporter_state(
             return True, exporter_running, exporter_info, exporter_container_id
 
     return False, False, None, None
-
-
-def _debug_log(message: str, data: dict[str, Any], *, run_id: str, hypothesis_id: str, location: str) -> None:
-    # region agent log
-    try:
-        payload = {
-            "sessionId": "a72628",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-    # endregion
 
 
 def _signature_exporter_command(stack: str | None) -> list[str] | str | None:
@@ -480,19 +458,6 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             json_data["command"] = cmds
     elif isinstance(cmd, str) and cmd.strip():
         json_data["command"] = cmd.strip()
-    _debug_log(
-        "up_exporter command resolution",
-        {
-            "container_id": container_id,
-            "stack": config.stack,
-            "command": json_data.get("command"),
-            "has_env": bool(exporter_env_vars),
-            "network": network_name,
-        },
-        run_id="pre-fix",
-        hypothesis_id="H5",
-        location="api_agregator/app/routers/prometheus.py:up_exporter:command",
-    )
 
     try:
         # Используем адрес хоста вместо глобального DOCKER_API_URL
