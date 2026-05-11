@@ -87,7 +87,7 @@
                   <td>
                     <button
                       class="btn btn-sm btn-success"
-                      :disabled="importingByConfig[row.config_id] || !row.metrics_ready || !selectedTemplate"
+                      :disabled="importingByConfig[row.config_id] || !row.metrics_ready || !resolveTemplateForContainer(row)"
                       @click="importForContainer(row)"
                     >
                       <span v-if="importingByConfig[row.config_id]" class="loading"></span>
@@ -247,13 +247,23 @@ async function importForContainer (row: GrafanaEligibleContainer) {
     return
   }
   if (!selectedTemplate.value) {
-    showToast('Выберите шаблон', 'error')
+    // fallback may still resolve by stack template
+  }
+  const effectiveTemplate = resolveTemplateForContainer(row)
+  if (!effectiveTemplate) {
+    showToast('Не найден подходящий шаблон для выбранного контейнера', 'error')
     return
   }
+  if (selectedTemplate.value && selectedTemplate.value !== effectiveTemplate) {
+    showToast(`Выбранный шаблон ${selectedTemplate.value} не подходит для stack ${row.stack}. Использую ${effectiveTemplate}.`, 'info')
+  }
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/271fd3c1-b718-4e6d-998e-76e80a8d4de6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a72628'},body:JSON.stringify({sessionId:'a72628',runId:'post-fix',hypothesisId:'H9',location:'frontend/src/views/GrafanaView.vue:importForContainer',message:'resolved template for container import',data:{container_name:row.container_name,stack:row.stack,selectedTemplate:selectedTemplate.value,effectiveTemplate},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   importingByConfig.value[row.config_id] = true
   try {
     await grafanaApi.importDashboard({
-      template_key: selectedTemplate.value,
+      template_key: effectiveTemplate,
       prometheus_datasource_uid: prometheusDsUid.value || undefined,
       title_prefix: titlePrefix.value || undefined,
       instance_suffix: row.container_name.replace(/[^a-zA-Z0-9_-]/g, '-'),
@@ -266,6 +276,25 @@ async function importForContainer (row: GrafanaEligibleContainer) {
   } finally {
     importingByConfig.value[row.config_id] = false
   }
+}
+
+function resolveTemplateForContainer (row: GrafanaEligibleContainer): string {
+  const keys = templateKeys.value
+  if (!keys.length) return ''
+  const stackKey = String(row.stack || '').toLowerCase()
+  const exact = keys.find(k => k.toLowerCase() === stackKey)
+  if (exact) return exact
+
+  if (selectedTemplate.value && keys.includes(selectedTemplate.value)) {
+    const selected = selectedTemplate.value.toLowerCase()
+    const sameFamily = (
+      (selected.includes('mongo') && stackKey.includes('mongo')) ||
+      ((selected.includes('postgres') || selected.includes('postgresql')) &&
+        (stackKey.includes('postgres') || stackKey.includes('postgresql')))
+    )
+    if (sameFamily) return selectedTemplate.value
+  }
+  return selectedTemplate.value && keys.includes(selectedTemplate.value) ? selectedTemplate.value : ''
 }
 
 function openHref (relative: string | null) {

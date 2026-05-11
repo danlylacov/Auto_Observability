@@ -1,6 +1,8 @@
 import hashlib
 import json
 import os
+import re
+import time
 import uuid
 from copy import deepcopy
 from typing import Any
@@ -13,6 +15,7 @@ class GrafanaTemplateLoader:
     """Загрузка дашбордов с grafana.com и подготовка под локальный источник Prometheus."""
 
     GRAFANA_COM_API = "https://grafana.com/api/dashboards"
+    DEBUG_LOG_PATH = "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
 
     def __init__(self, cache_dir: str = "./.dashboard_cache", templates_path: str | None = None):
         self.cache_dir = cache_dir
@@ -133,9 +136,125 @@ class GrafanaTemplateLoader:
                 var["query"] = 'label_values(up{job=~".*_mongodb"}, job)'
                 var["includeAll"] = True
                 var["allValue"] = ".*"
+                var.pop("regex", None)
+                var["refresh"] = 1
             elif name == "host":
                 var["query"] = 'label_values(up{job=~".*_mongodb"}, instance)'
                 var["includeAll"] = False
+                var.pop("regex", None)
+                var["refresh"] = 1
+
+    @staticmethod
+    def patch_mongodb_7353_compatible_metrics(dash: dict[str, Any]) -> None:
+        """
+        MongoDB exporters in --compatible-mode expose legacy metric names without mongod_ infix.
+        Map dashboard references so panels resolve on both naming schemes by preferring the
+        compatible names (same label layout on modern percona exporters).
+        """
+        subs = (
+            ("mongodb_mongod_extra_info_page_faults_total", "mongodb_extra_info_page_faults_total"),
+            ("mongodb_mongod_op_counters_total", "mongodb_op_counters_total"),
+            ("mongodb_mongod_asserts_total", "mongodb_asserts_total"),
+            ("mongodb_mongod_connections", "mongodb_connections"),
+        )
+
+        def patch_expr(expr: str) -> str:
+            out = expr
+            for old, new in subs:
+                out = out.replace(old, new)
+            return out
+
+        def walk(o: Any) -> None:
+            if isinstance(o, dict):
+                if isinstance(o.get("expr"), str):
+                    o["expr"] = patch_expr(o["expr"])
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for it in o:
+                    walk(it)
+
+        walk(dash)
+
+    @staticmethod
+    def patch_postgresql_9628(dash: dict[str, Any]) -> None:
+        """
+        Make dashboard 9628 work outside Kubernetes:
+        - replace release label selectors with job selectors
+        - normalize variables to Prometheus job/instance labels
+        """
+        templating = (dash.get("templating") or {}).get("list")
+        if isinstance(templating, list):
+            for var in templating:
+                if not isinstance(var, dict):
+                    continue
+                name = var.get("name")
+                if name == "namespace":
+                    var["query"] = 'label_values(pg_up{job=~".*_postgres"}, job)'
+                    var["includeAll"] = False
+                    # Original 9628 used query_result(); regex expected "release=..." in the string.
+                    # label_values() returns plain values — strip regex or variables stay empty.
+                    var.pop("regex", None)
+                    var["refresh"] = 1
+                elif name == "release":
+                    var["query"] = 'label_values(pg_up{job=~".*_postgres"}, job)'
+                    var["includeAll"] = False
+                    var.pop("regex", None)
+                    var["refresh"] = 1
+                elif name == "instance":
+                    var["query"] = 'label_values(pg_up{job="$release"}, instance)'
+                    var["includeAll"] = False
+                    var.pop("regex", None)
+                    var["refresh"] = 1
+                elif name == "datname":
+                    # Scope databases to the selected exporter (avoids empty multi-job mixes).
+                    var["query"] = (
+                        'label_values(pg_stat_database_numbackends{job="$release", '
+                        'instance="$instance"}, datname)'
+                    )
+                    var["refresh"] = 1
+                    var.pop("regex", None)
+                elif name == "mode":
+                    var.pop("regex", None)
+                elif name == "DS_PROMETHEUS":
+                    var.pop("regex", None)
+
+        def patch_expr(expr: str) -> str:
+            out = re.sub(r"(\{|,\s*)release=", r"\1job=", expr)
+            out = out.replace('kubernetes_namespace="$namespace", ', "")
+            out = out.replace(', kubernetes_namespace="$namespace"', "")
+            return out
+
+        def walk(o: Any) -> None:
+            if isinstance(o, dict):
+                if isinstance(o.get("expr"), str):
+                    o["expr"] = patch_expr(o["expr"])
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for it in o:
+                    walk(it)
+
+        walk(dash)
+
+    @staticmethod
+    def _debug_log(message: str, data: dict[str, Any], *, run_id: str, hypothesis_id: str, location: str) -> None:
+        # region agent log
+        try:
+            payload = {
+                "sessionId": "a72628",
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": int(time.time() * 1000),
+            }
+            with open(GrafanaTemplateLoader.DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        # endregion
 
 
     def prepare_for_import(
@@ -146,6 +265,7 @@ class GrafanaTemplateLoader:
         title_prefix: str | None = None,
     ) -> dict[str, Any]:
         dash = self.unwrap_dashboard_payload(dashboard)
+        source_dashboard_id = int(dash.get("gnetId") or dash.get("id") or 0)
 
         dash.pop("__inputs", None)
         dash.pop("__requires", None)
@@ -164,8 +284,25 @@ class GrafanaTemplateLoader:
             dash["title"] = f"{dash.get('title', 'Dashboard')} [{instance_suffix}]"
 
         self.rewrite_prometheus_datasources(dash, ds_uid)
-        if int(dash.get("gnetId") or 0) == 7353:
+        if source_dashboard_id == 7353:
             self.patch_mongodb_7353_templating(dash)
+            self.patch_mongodb_7353_compatible_metrics(dash)
+            self._debug_log(
+                "applied mongodb dashboard compatible metric names",
+                {"dashboard_id": source_dashboard_id, "uid": dash.get("uid"), "title": dash.get("title")},
+                run_id="mongo-fix",
+                hypothesis_id="H13",
+                location="grafana_generation/app/services/templste_loader.py:prepare_for_import:mongodb-compat",
+            )
+        if source_dashboard_id == 9628:
+            self.patch_postgresql_9628(dash)
+            self._debug_log(
+                "applied postgres dashboard patch",
+                {"dashboard_id": source_dashboard_id, "uid": dash.get("uid"), "title": dash.get("title")},
+                run_id="postgres-run",
+                hypothesis_id="H8",
+                location="grafana_generation/app/services/templste_loader.py:prepare_for_import",
+            )
 
         # Удалить возможные временные ключи Grafana.com
         if "meta" in dash:

@@ -1,5 +1,5 @@
 - targets:
-  - localhost:9216
+  - localhost:9100
   labels:
     cluster: mongodb
     service_name: mongodb

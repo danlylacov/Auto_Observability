@@ -109,10 +109,65 @@ async def import_dashboard(
         location="api_agregator/app/routers/grafana.py:import_dashboard:request",
     )
     gw = _generation_gateway()
+    payload = body.model_dump(exclude_none=True)
+
+    # Server-side guard: resolve template by container stack to avoid wrong dashboard type.
+    resolved_stack = None
+    resolved_template = body.template_key
+    suffix = (body.instance_suffix or "").strip()
+    if suffix:
+        cfg_rows = (
+            db.query(PrometheusConfig)
+            .filter(
+                PrometheusConfig.status == "active",
+            )
+            .order_by(PrometheusConfig.created_at.desc())
+            .all()
+        )
+        suffix_norm = suffix.lstrip("/").lower()
+        cfg = next(
+            (
+                r for r in cfg_rows
+                if str((r.container_name or "")).lstrip("/").lower() == suffix_norm
+            ),
+            None,
+        )
+        if cfg and cfg.stack:
+            resolved_stack = str(cfg.stack).lower()
+            if not resolved_template or str(resolved_template).lower() != resolved_stack:
+                try:
+                    templates = gw.make_request("GET", "/api/v1/grafana/templates", timeout=20.0) or {}
+                    available = set((templates.get("templates") or {}).keys())
+                    if resolved_stack in available:
+                        resolved_template = resolved_stack
+                except Exception:
+                    # keep user-provided template if template index is unavailable
+                    pass
+    if resolved_template:
+        payload["template_key"] = resolved_template
+    logger.info(
+        "Grafana import template resolution: suffix=%s requested=%s stack=%s resolved=%s",
+        body.instance_suffix,
+        body.template_key,
+        resolved_stack,
+        resolved_template,
+    )
+    _debug_log(
+        "grafana import template resolution",
+        {
+            "requested_template": body.template_key,
+            "resolved_template": resolved_template,
+            "instance_suffix": body.instance_suffix,
+            "resolved_stack": resolved_stack,
+        },
+        run_id="post-fix",
+        hypothesis_id="H10",
+        location="api_agregator/app/routers/grafana.py:import_dashboard:template_resolution",
+    )
     resp = gw.make_request(
         "POST",
         "/api/v1/grafana/import_dashboard",
-        json_data=body.model_dump(exclude_none=True),
+        json_data=payload,
         timeout=120.0,
     )
 
@@ -128,7 +183,7 @@ async def import_dashboard(
     if not title and isinstance(dash, dict):
         title = dash.get("title")
 
-    tmpl_key = body.template_key
+    tmpl_key = resolved_template or body.template_key
     sid = resp.get("dashboard_source_id") or body.dashboard_id
 
     row = db.query(GrafanaDashboard).filter(GrafanaDashboard.uid == uid).first()
