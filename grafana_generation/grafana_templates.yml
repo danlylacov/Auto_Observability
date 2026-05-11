@@ -1,0 +1,8 @@
+# Ключ совпадает с нормализованным стеком классификатора (postgresql, mongodb, …).
+# dashboard_id — публичный дашборд на grafana.com
+
+postgresql:
+  dashboard_id: 9628
+
+mongodb:
+  dashboard_id: 7353
