@@ -81,6 +81,37 @@ class TestPrometheusConfigGenerator:
         assert result == "postgresql"
 
     @patch('prometheus_generation.app.services.prometheus_config_generator.os.path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data='mongodb:\n  exporter_port: 9216\n  job_name_suffix: _mongodb')
+    @patch('prometheus_generation.app.services.prometheus_config_generator.yaml.safe_load')
+    def test_build_prometheus_config_uses_scrape_port_override(self, mock_yaml_load, mock_file, mock_exists):
+        """Host publish port must appear in targets when prometheus_scrape_port is set."""
+        mock_exists.return_value = True
+        mock_yaml_load.return_value = {
+            "mongodb": {
+                "exporter_port": 9216,
+                "job_name_suffix": "_mongodb",
+                "scrape_interval": "15s",
+                "scrape_timeout": "10s",
+                "prometheus_scrape_port": 9100,
+            }
+        }
+        generator = PrometheusConfigGenerator()
+        cfg = {
+            "exporter_port": 9216,
+            "job_name_suffix": "_mongodb",
+            "scrape_interval": "15s",
+            "scrape_timeout": "10s",
+            "prometheus_scrape_port": 9100,
+        }
+        out = generator._build_prometheus_config(
+            "my-mongo",
+            {"Config": {"Labels": {}}},
+            cfg,
+            "localhost",
+        )
+        assert out["target"]["targets"] == ["localhost:9100"]
+
+    @patch('prometheus_generation.app.services.prometheus_config_generator.os.path.exists')
     @patch('builtins.open', new_callable=mock_open, read_data='nginx:\n  exporter_image: nginx-exporter')
     @patch('prometheus_generation.app.services.prometheus_config_generator.yaml.safe_load')
     def test_generate_config_success(self, mock_yaml_load, mock_file, mock_exists):

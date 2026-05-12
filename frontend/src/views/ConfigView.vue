@@ -6,6 +6,7 @@
         <select v-model="selectedConfig" class="input select-config">
           <option value="prometheus-signature">Prometheus signature</option>
           <option value="prometheus-settings">Prometheus settings</option>
+          <option value="grafana-templates-yml">Grafana templates (grafana_templates.yml)</option>
         </select>
         <button class="btn btn-secondary" @click="loadConfig" :disabled="loading">
           <span v-if="loading" class="loading"></span>
@@ -45,7 +46,7 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import yamlLib from 'js-yaml'
-import { configApi, prometheusApi } from '../services/api'
+import { configApi, grafanaApi, prometheusApi } from '../services/api'
 import { showToast } from '../utils/toast'
 
 const selectedConfig = ref('prometheus-signature')
@@ -93,6 +94,33 @@ const loadConfig = async () => {
         lineWidth: -1,
         noRefs: true
       })
+      editorValue.value = yamlContent
+      updateEditor(yamlContent)
+    } else if (selectedConfig.value === 'grafana-templates-yml') {
+      let raw = await grafanaApi.getTemplatesYml()
+      raw = raw.trimEnd()
+      let yamlContent = raw
+      try {
+        if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+          const parsed = JSON.parse(raw)
+          yamlContent = yamlLib.dump(parsed, {
+            indent: 2,
+            lineWidth: -1,
+            noRefs: true
+          })
+        } else {
+          const parsed = yamlLib.load(raw)
+          if (parsed !== undefined && parsed !== null) {
+            yamlContent = yamlLib.dump(parsed as Record<string, unknown> | unknown[], {
+              indent: 2,
+              lineWidth: -1,
+              noRefs: true
+            })
+          }
+        }
+      } catch (parseErr) {
+        console.warn('Grafana templates: keep raw text (parse failed):', parseErr)
+      }
       editorValue.value = yamlContent
       updateEditor(yamlContent)
     }
@@ -226,6 +254,8 @@ const saveConfig = async () => {
     } else if (selectedConfig.value === 'prometheus-settings') {
       const parsed = yamlLib.load(editorValue.value)
       await prometheusApi.updateManagerSettings(parsed as any)
+    } else if (selectedConfig.value === 'grafana-templates-yml') {
+      await grafanaApi.putTemplatesYml(editorValue.value)
     }
     showToast('Configuration saved', 'success')
   } catch (e: any) {

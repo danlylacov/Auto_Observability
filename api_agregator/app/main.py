@@ -1,20 +1,34 @@
 """Main FastAPI application module."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
+from app.db.postgres.schema_patches import apply_schema_patches
 from app.routers import containers, grafana, hosts, prometheus
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        apply_schema_patches()
+    except Exception:
+        logger.exception("Schema patches failed")
+        raise
+    yield
+
+
 app = FastAPI(
     title="Auto Observability API",
     description="Auto Observability API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

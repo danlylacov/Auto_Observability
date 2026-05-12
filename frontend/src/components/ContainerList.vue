@@ -123,6 +123,7 @@
               <th>Stack</th>
               <th>Prometheus</th>
               <th class="config-checkbox-column">In Config</th>
+              <th class="config-checkbox-column">Grafana</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -209,6 +210,21 @@
                   ✗
                 </span>
               </td>
+              <td class="config-checkbox-column">
+                <span
+                  v-if="data.prometheus_config"
+                  :class="[
+                    'config-indicator',
+                    data.prometheus_config.has_grafana_dashboard
+                      ? 'config-indicator-success'
+                      : 'config-indicator-error'
+                  ]"
+                  :title="data.prometheus_config.has_grafana_dashboard ? 'Grafana dashboard linked' : 'No Grafana dashboard'"
+                >
+                  {{ data.prometheus_config.has_grafana_dashboard ? '✓' : '✗' }}
+                </span>
+                <span v-else class="text-gray">-</span>
+              </td>
               <td>
                 <div class="dropdown-container">
                   <button 
@@ -268,6 +284,13 @@
                       >
                         Start Exporter
                       </button>
+                      <button
+                        @click="handleCreateGrafanaDashboard(id, data); closeDropdown(id)"
+                        class="dropdown-item"
+                        :disabled="actionLoading === id || !canCreateGrafanaDashboard(data)"
+                      >
+                        Create Grafana dashboard
+                      </button>
                       <div class="dropdown-divider"></div>
                       <button 
                         @click="viewDetails(id); closeDropdown(id)" 
@@ -288,7 +311,7 @@
               class="exporter-row"
             >
               <td class="checkbox-column"></td>
-              <td colspan="7">
+              <td colspan="8">
                 <div class="exporter-details">
                   <div class="exporter-info">
                     <span class="exporter-label">Exporter:</span>
@@ -337,7 +360,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { containerApi, hostsApi, type ContainersResponse, type HostInfo } from '../services/api'
+import { containerApi, grafanaApi, hostsApi, type ContainerData, type ContainersResponse, type HostInfo } from '../services/api'
 import { showToast } from '../utils/toast'
 
 const router = useRouter()
@@ -708,6 +731,47 @@ const handleStartExporter = async (id: string) => {
   } catch (error: any) {
     console.error('Failed to start exporter:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to start exporter'
+    showToast(errorMsg, 'error')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
+const canCreateGrafanaDashboard = (data: ContainerData): boolean => {
+  const pc = data.prometheus_config
+  if (!pc) return false
+  return pc.grafana_metrics_ready === true
+}
+
+const handleCreateGrafanaDashboard = async (containerId: string, data: ContainerData) => {
+  const pc = data.prometheus_config
+  if (!pc) {
+    showToast('No Prometheus config for this container', 'error')
+    return
+  }
+  if (!canCreateGrafanaDashboard(data)) {
+    showToast(
+      'Prometheus metrics must be ready: exporter running and job in main Prometheus config',
+      'error'
+    )
+    return
+  }
+  const name = data.info.Name?.replace(/^\//, '') || ''
+  if (!name) {
+    showToast('Container name is missing', 'error')
+    return
+  }
+  actionLoading.value = containerId
+  try {
+    await grafanaApi.importDashboard({
+      prometheus_datasource_uid: 'prometheus',
+      instance_suffix: name.replace(/[^a-zA-Z0-9_-]/g, '-'),
+      overwrite: true
+    })
+    showToast('Grafana dashboard created', 'success')
+    await loadContainers()
+  } catch (error: any) {
+    const errorMsg = error.response?.data?.detail || error.message || 'Failed to create Grafana dashboard'
     showToast(errorMsg, 'error')
   } finally {
     actionLoading.value = null

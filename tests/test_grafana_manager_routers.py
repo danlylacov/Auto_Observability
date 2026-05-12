@@ -92,6 +92,40 @@ class TestGrafanaManagerRouter:
         assert "Failed to stop" in response.json()["detail"]
 
     @patch('grafana_manager.app.routes.manage.get_grafana_manager')
+    def test_restart_grafana_success(self, mock_get_manager, client):
+        mock_manager = MagicMock()
+        mock_manager.restart_grafana.return_value = True
+        mock_get_manager.return_value = mock_manager
+
+        response = client.post("/api/v1/manage/grafana/restart")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "restarted"
+        mock_manager.restart_grafana.assert_called_once()
+
+    @patch('grafana_manager.app.routes.manage.get_grafana_manager')
+    def test_restart_grafana_failure(self, mock_get_manager, client):
+        mock_manager = MagicMock()
+        mock_manager.restart_grafana.return_value = False
+        mock_get_manager.return_value = mock_manager
+
+        response = client.post("/api/v1/manage/grafana/restart")
+
+        assert response.status_code == 500
+        assert "Failed to restart" in response.json()["detail"]
+
+    @patch('grafana_manager.app.routes.manage.get_grafana_manager')
+    def test_restart_grafana_exception(self, mock_get_manager, client):
+        mock_manager = MagicMock()
+        mock_manager.restart_grafana.side_effect = Exception("Restart error")
+        mock_get_manager.return_value = mock_manager
+
+        response = client.post("/api/v1/manage/grafana/restart")
+
+        assert response.status_code == 500
+        assert "Failed to restart" in response.json()["detail"]
+
+    @patch('grafana_manager.app.routes.manage.get_grafana_manager')
     def test_get_grafana_status_success(self, mock_get_manager, client):
         """Тест получения статуса Grafana."""
         mock_manager = MagicMock()

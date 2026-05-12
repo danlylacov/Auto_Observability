@@ -1,7 +1,8 @@
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException, status
+import yaml
+from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.services.grafana_dashboard_importer import GrafanaDashboardImporter, GrafanaHttpError
@@ -29,6 +30,36 @@ class DeleteDashboardResponse(BaseModel):
 async def list_dashboard_templates():
     loader = GrafanaTemplateLoader()
     return {"templates": loader.load_templates_index()}
+
+
+@router.get("/templates_yml")
+async def get_templates_yml():
+    loader = GrafanaTemplateLoader()
+    path = loader.templates_path
+    try:
+        with open(path, encoding="utf-8") as f:
+            return {"content": f.read()}
+    except FileNotFoundError:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="grafana_templates.yml not found",
+        )
+
+
+@router.put("/templates_yml", status_code=status.HTTP_200_OK)
+async def put_templates_yml(raw: str = Body(..., media_type="text/plain")):
+    try:
+        yaml.safe_load(raw)
+    except yaml.YAMLError as e:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid YAML: {e}",
+        ) from e
+    loader = GrafanaTemplateLoader()
+    path = loader.templates_path
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(raw)
+    return {"ok": True}
 
 
 @router.post("/import_dashboard", status_code=status.HTTP_200_OK)

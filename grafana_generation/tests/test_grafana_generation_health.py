@@ -22,3 +22,23 @@ def test_root_and_health():
     assert resp_health.status_code == 200
     assert resp_health.json() == {"status": "healthy"}
 
+
+def test_templates_yml_get():
+    client = TestClient(main_module.app)
+    r = client.get("/api/v1/grafana/templates_yml")
+    assert r.status_code == 200
+    body = r.json()
+    assert "content" in body
+    assert isinstance(body["content"], str)
+    assert len(body["content"]) > 0
+
+
+def test_templates_yml_put_invalid_yaml():
+    client = TestClient(main_module.app)
+    r = client.put(
+        "/api/v1/grafana/templates_yml",
+        content="this is not: valid: yaml: [[",
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+    )
+    assert r.status_code == 400
+

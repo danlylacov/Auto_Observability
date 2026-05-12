@@ -75,6 +75,8 @@ export interface PrometheusConfigData {
       image: string
     } | null
   }
+  has_grafana_dashboard?: boolean
+  grafana_metrics_ready?: boolean
 }
 
 export interface ContainerData {
@@ -380,6 +382,7 @@ export interface GrafanaImportedItem {
   source_dashboard_id: number | null
   slug: string | null
   url: string | null
+  prometheus_config_id?: number | null
   created_at: string | null
 }
 
@@ -396,6 +399,8 @@ export interface GrafanaEligibleContainer {
   exporter_status: string | null
   in_main_config: boolean
   metrics_ready: boolean
+  grafana_metrics_ready?: boolean
+  has_grafana_dashboard?: boolean
   config_metadata: any
 }
 
@@ -435,6 +440,45 @@ export const grafanaApi = {
 
   async deleteImported(databaseId: number): Promise<any> {
     const response = await api.delete(`/api/v1/grafana/imported_dashboards/${databaseId}`)
+    return response.data
+  },
+
+  async startManager(): Promise<any> {
+    const response = await api.post('/api/v1/grafana/manager/start')
+    return response.data
+  },
+
+  async stopManager(): Promise<any> {
+    const response = await api.post('/api/v1/grafana/manager/stop')
+    return response.data
+  },
+
+  async getManagerStatus(): Promise<any> {
+    const response = await api.get('/api/v1/grafana/manager/status')
+    return response.data
+  },
+
+  async restartManager(): Promise<any> {
+    const response = await api.post('/api/v1/grafana/manager/restart')
+    return response.data
+  },
+
+  async getTemplatesYml(): Promise<string> {
+    const response = await api.get('/api/v1/grafana/templates_yml')
+    const d = response.data
+    if (typeof d === 'string') {
+      return d
+    }
+    if (d && typeof d === 'object' && typeof (d as { content?: string }).content === 'string') {
+      return (d as { content: string }).content
+    }
+    return ''
+  },
+
+  async putTemplatesYml(content: string): Promise<any> {
+    const response = await api.put('/api/v1/grafana/templates_yml', content, {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
     return response.data
   }
 }

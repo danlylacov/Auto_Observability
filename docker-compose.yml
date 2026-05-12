@@ -84,6 +84,7 @@ services:
       PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
       DOCKER_API_URL: http://docker_api:8000
       PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
+      GRAFANA_MANAGER_URL: http://grafana_manager:8000
       DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
       GRAFANA_GENERATION_URL: http://grafana_generation:8000
     ports:
@@ -94,6 +95,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      grafana_manager:
         condition: service_healthy
       grafana_generation:
         condition: service_healthy
@@ -321,6 +324,25 @@ services:
       timeout: 10s
       retries: 3
 
+  # Grafana container start/stop (Docker on host / socket)
+  grafana_manager:
+    build:
+      context: ./grafana_manager
+      dockerfile: Dockerfile
+      network: host
+    container_name: auto_observability_grafana_manager
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8005:8000"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Grafana dashboard generation + import API
   grafana_generation:
     build:
@@ -336,6 +358,8 @@ services:
       DEFAULT_PROMETHEUS_DS_UID: ${DEFAULT_PROMETHEUS_DS_UID:-prometheus}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./grafana_generation/grafana_templates.yml:/app/grafana_templates.yml
     # Порт только при отладке; api_agregator ходит на http://grafana_generation:8000 внутри сети.
     ports:
       - "${GRAFANA_GENERATION_HOST_PORT:-18010}:8000"

@@ -176,10 +176,13 @@ class PrometheusConfigGenerator:
             ]
         }
 
-        exporter_port = exporter_config.get('exporter_port', '9187')
-        
+        scrape_port = exporter_config.get("prometheus_scrape_port")
+        if scrape_port is None:
+            scrape_port = exporter_config.get("exporter_port", "9187")
+        scrape_port = str(scrape_port).strip()
+
         target_yml = {
-            'targets': [f'{target_address}:{exporter_port}'],
+            'targets': [f'{target_address}:{scrape_port}'],
             'labels': labels
         }
 
@@ -227,7 +230,10 @@ class PrometheusConfigGenerator:
         if stack_key not in self.exporter_configs:
             return None
 
-        exporter_config = self.exporter_configs[stack_key]
+        exporter_config = dict(self.exporter_configs[stack_key])
+        scrape_override = container_data.get("prometheus_scrape_port")
+        if scrape_override is not None:
+            exporter_config["prometheus_scrape_port"] = int(scrape_override)
 
         network_name = self.get_container_network(container_info)
 

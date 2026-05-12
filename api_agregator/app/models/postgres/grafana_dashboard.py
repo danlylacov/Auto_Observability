@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, Index
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, text
 
 from app.db.postgres.database import Base
 
@@ -25,10 +25,20 @@ class GrafanaDashboard(Base):
 
     url = Column(String(1024))
 
+    prometheus_config_id = Column(Integer, ForeignKey("prometheus_configs.id"), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (Index("idx_grafana_imported_template_key", "template_key"),)
+    __table_args__ = (
+        Index("idx_grafana_imported_template_key", "template_key"),
+        Index(
+            "uq_grafana_imported_prometheus_config_id",
+            "prometheus_config_id",
+            unique=True,
+            postgresql_where=text("prometheus_config_id IS NOT NULL"),
+        ),
+    )
 
     def __repr__(self) -> str:
         return f"<GrafanaDashboard(id={self.id}, uid={self.uid}, title={self.title!r})>"

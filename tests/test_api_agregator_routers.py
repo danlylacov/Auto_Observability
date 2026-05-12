@@ -13,6 +13,7 @@ import api_agregator.app as api_app_module
 sys.modules["app"] = api_app_module
 
 from api_agregator.app.main import app
+from app.db.postgres.database import get_db as get_db_session_dep
 
 
 @pytest.fixture
@@ -499,54 +500,6 @@ class TestHostsRouter:
 class TestPrometheusRouter:
     """Тесты для роутера prometheus."""
 
-    @patch('api_agregator.app.routers.prometheus.os.getenv')
-    @patch('api_agregator.app.routers.prometheus.APIGateway')
-    @patch('api_agregator.app.routers.prometheus.DockerContainers')
-    @patch('api_agregator.app.routers.prometheus.HostsService')
-    @patch('api_agregator.app.routers.prometheus.get_db')
-    def test_generate_config_success(self, mock_get_db, mock_hosts_service_class, mock_docker_containers_class,
-                                    mock_api_gateway_class, mock_getenv, client, mock_db_session, mock_host):
-        """Тест успешной генерации конфигурации."""
-        mock_get_db.return_value = iter([mock_db_session])
-        mock_getenv.return_value = "http://prometheus-generation:8000"
-        
-        # Настройка HostsService
-        mock_hosts_service = MagicMock()
-        mock_host_dto = SimpleNamespace()
-        mock_host_dto.host = "localhost"
-        mock_hosts_service.get_host_by_id.return_value = mock_host_dto
-        mock_hosts_service_class.return_value = mock_hosts_service
-        
-        # Настройка DockerContainers
-        mock_docker_containers = MagicMock()
-        container_data = {
-            "info": {"Name": "/test-container", "State": {"Status": "running"}},
-            "classification": {"result": [["postgresql", 100]]}
-        }
-        mock_docker_containers.get_container.return_value = container_data
-        mock_docker_containers_class.return_value = mock_docker_containers
-        
-        # Настройка APIGateway
-        mock_gateway = MagicMock()
-        mock_gateway.make_request.return_value = {
-            "info": {"exporter_image": "test-image", "exporter_port": 9187},
-            "config": {"scrape_configs": []}
-        }
-        mock_api_gateway_class.return_value = mock_gateway
-        
-        # Настройка запросов к БД
-        mock_query = MagicMock()
-        mock_query.filter.return_value.first.return_value = None
-        mock_db_session.query.return_value = mock_query
-
-        response = client.post(
-            "/api/v1/prometheus/generate_config",
-            params={"container_id": "container1", "host_id": "host1"}
-        )
-        
-        assert response.status_code == 200
-        assert "config_id" in response.json()
-
     @patch('api_agregator.app.routers.prometheus.HostsService')
     @patch('api_agregator.app.routers.prometheus.get_db')
     def test_generate_config_host_not_found(self, mock_get_db, mock_hosts_service_class, client, mock_db_session):
@@ -930,50 +883,82 @@ class TestPrometheusRouter:
     @patch('api_agregator.app.routers.prometheus.os.getenv')
     @patch('api_agregator.app.routers.prometheus.APIGateway')
     @patch('api_agregator.app.routers.prometheus.DockerContainers')
-    @patch('api_agregator.app.routers.prometheus.get_db')
-    def test_generate_config_success(self, mock_get_db, mock_docker_containers_class, mock_api_gateway_class, mock_getenv, mock_hosts_service_class, client, mock_db_session):
+    def test_generate_config_success(
+        self,
+        mock_docker_containers_class,
+        mock_api_gateway_class,
+        mock_getenv,
+        mock_hosts_service_class,
+        client,
+        mock_db_session,
+    ):
         """Тест успешной генерации конфигурации."""
-        mock_get_db.return_value = iter([mock_db_session])
-        mock_getenv.return_value = "http://prometheus-generation:8000"
-        
-        # Настройка HostsService
-        mock_hosts_service = MagicMock()
-        mock_host_dto = SimpleNamespace()
-        mock_host_dto.host = "localhost"
-        mock_host_dto.port = 8000
-        mock_hosts_service.get_host_by_id.return_value = mock_host_dto
-        mock_hosts_service_class.return_value = mock_hosts_service
-        
-        # Настройка DockerContainers
-        mock_docker_containers = MagicMock()
-        mock_docker_containers.get_container.return_value = {
-            "info": {"Name": "/test-container", "Config": {"Image": "nginx"}},
-            "classification": {"result": [["nginx", 0.9]]}
-        }
-        mock_docker_containers_class.return_value = mock_docker_containers
-        
-        # Настройка APIGateway
-        mock_gateway = MagicMock()
-        mock_gateway.make_request.return_value = {
-            "config": {"file": "test.yml", "bucket": "prometheus"},
-            "info": {"exporter_image": "nginx-exporter", "exporter_port": 9100}
-        }
-        mock_api_gateway_class.return_value = mock_gateway
-        
-        # Настройка запросов к БД
-        mock_query = MagicMock()
-        mock_query.filter.return_value.first.return_value = None  # Container не найден
-        mock_query.filter.return_value.order_by.return_value.first.return_value = None  # Config не найден
-        mock_db_session.query.return_value = mock_query
-        mock_db_session.add = MagicMock()
-        mock_db_session.commit = MagicMock()
-        mock_db_session.refresh = MagicMock()
 
-        response = client.post(
-            "/api/v1/prometheus/generate_config",
-            params={"container_id": "container1", "host_id": "host1"}
-        )
-        
-        assert response.status_code == 200
-        assert "config_id" in response.json()
+        mock_getenv.return_value = "http://prometheus-generation:8000"
+
+        def _db_override():
+            yield mock_db_session
+
+        app.dependency_overrides[get_db_session_dep] = _db_override
+
+        try:
+            # Настройка HostsService
+            mock_hosts_service = MagicMock()
+            mock_host_dto = SimpleNamespace()
+            mock_host_dto.host = "localhost"
+            mock_host_dto.port = 8000
+            mock_hosts_service.get_host_by_id.return_value = mock_host_dto
+            mock_hosts_service_class.return_value = mock_hosts_service
+
+            # Настройка DockerContainers
+            mock_docker_containers = MagicMock()
+            mock_docker_containers.get_container.return_value = {
+                "info": {
+                    "Name": "/test-container",
+                    "Config": {"Image": "nginx"},
+                    "State": {"Status": "running"},
+                },
+                "classification": {"result": [["nginx", 0.9]]},
+            }
+            mock_docker_containers.get_containers.return_value = {
+                "exp1": {
+                    "info": {
+                        "Name": "/test-container-exporter",
+                        "State": {"Status": "running"},
+                        "NetworkSettings": {
+                            "Ports": {"9100/tcp": [{"HostIp": "0.0.0.0", "HostPort": "19100"}]},
+                        },
+                    },
+                    "host_id": "host1",
+                    "host_name": "display-name",
+                },
+            }
+            mock_docker_containers_class.return_value = mock_docker_containers
+
+            # Настройка APIGateway
+            mock_gateway = MagicMock()
+            mock_gateway.make_request.return_value = {
+                "config": {"file": "test.yml", "bucket": "prometheus"},
+                "info": {"exporter_image": "nginx-exporter", "exporter_port": 9100}
+            }
+            mock_api_gateway_class.return_value = mock_gateway
+
+            # Настройка запросов к БД
+            mock_query = MagicMock()
+            mock_query.filter.return_value.first.return_value = None  # Container не найден
+            mock_query.filter.return_value.order_by.return_value.first.return_value = None  # Config не найден
+            mock_db_session.query.return_value = mock_query
+            mock_db_session.add = MagicMock()
+            mock_db_session.commit = MagicMock()
+            mock_db_session.refresh = MagicMock()
+
+            response = client.post(
+                "/api/v1/prometheus/generate_config",
+                params={"container_id": "container1", "host_id": "host1"}
+            )
+
+            assert response.status_code == 200
+            assert "config_id" in response.json()
+        finally:
+            app.dependency_overrides.pop(get_db_session_dep, None)
 

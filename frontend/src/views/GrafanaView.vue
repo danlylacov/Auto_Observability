@@ -3,12 +3,8 @@
     <div class="header-section">
       <div>
         <h1 class="page-title">Grafana Dashboards</h1>
-        <p class="page-subtitle">
-          Слева — контейнеры, готовые к созданию дашборда. Справа — уже работающие дашборды.
-        </p>
       </div>
       <div class="header-actions">
-        <a v-if="grafanaUiHref" :href="grafanaUiHref" target="_blank" class="btn btn-secondary">Open Grafana</a>
         <button @click="loadAll" class="btn btn-primary" :disabled="isLoadingAny">
           <span v-if="isLoadingAny" class="loading"></span>
           <span v-else>Refresh</span>
@@ -16,25 +12,46 @@
       </div>
     </div>
 
-    <div class="settings-panel">
-      <div class="settings-grid">
-        <div class="form-group">
-          <label for="tmpl">Template</label>
-          <select id="tmpl" v-model="selectedTemplate" class="input select">
-            <option disabled value="">-- choose template --</option>
-            <option v-for="key in templateKeys" :key="key" :value="key">
-              {{ key }} (id {{ templates[key]?.dashboard_id ?? "-" }})
-            </option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="dsuid">Prometheus datasource UID</label>
-          <input id="dsuid" v-model.trim="prometheusDsUid" class="input" type="text" placeholder="prometheus" />
-        </div>
-        <div class="form-group">
-          <label for="prefix">Title prefix (optional)</label>
-          <input id="prefix" v-model.trim="titlePrefix" class="input" type="text" placeholder="prod" />
-        </div>
+    <div class="manager-panel">
+      <div>
+        <h2 class="panel-title-inline">Grafana Manager</h2>
+        <p v-if="managerStatusText" class="manager-status-line">
+          Status:
+          <span class="badge" :class="managerStatusBadgeClass">{{ managerStatusText }}</span>
+        </p>
+      </div>
+      <div class="manager-controls">
+        <button @click="refreshManagerStatus" class="btn btn-secondary" :disabled="loadingManager">
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Refresh Status</span>
+        </button>
+        <button
+          v-if="isManagerRunning"
+          @click="stopManager"
+          class="btn btn-danger"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Stop Grafana</span>
+        </button>
+        <button
+          v-else
+          @click="startManager"
+          class="btn btn-success"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Start Grafana</span>
+        </button>
+        <button
+          @click="restartManager"
+          class="btn btn-warning"
+          :disabled="loadingManager"
+        >
+          <span v-if="loadingManager" class="loading"></span>
+          <span v-else>Restart Grafana</span>
+        </button>
+        <a v-if="grafanaUiHref" :href="grafanaUiHref" target="_blank" class="btn btn-primary">Open Grafana</a>
       </div>
     </div>
 
@@ -61,6 +78,7 @@
                   <th>Exporter</th>
                   <th>In Main Config</th>
                   <th>Ready</th>
+                  <th>Dashboard</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -85,9 +103,30 @@
                     </span>
                   </td>
                   <td>
+                    <span
+                      :class="[
+                        'badge',
+                        row.has_grafana_dashboard ? 'badge-success' : 'badge-secondary'
+                      ]"
+                    >
+                      {{ row.has_grafana_dashboard ? "Yes" : "No" }}
+                    </span>
+                  </td>
+                  <td>
                     <button
                       class="btn btn-sm btn-success"
-                      :disabled="importingByConfig[row.config_id] || !row.metrics_ready || !resolveTemplateForContainer(row)"
+                      :disabled="
+                        importingByConfig[row.config_id] ||
+                          !row.metrics_ready ||
+                          row.has_grafana_dashboard
+                      "
+                      :title="
+                        row.has_grafana_dashboard
+                          ? 'Dashboard already created for this config'
+                          : !row.metrics_ready
+                            ? 'Exporter must run and job must be in main Prometheus config'
+                            : ''
+                      "
                       @click="importForContainer(row)"
                     >
                       <span v-if="importingByConfig[row.config_id]" class="loading"></span>
@@ -172,42 +211,24 @@ const grafanaUiHref = (
     : ''
 ) as string
 
-const templates = ref<Record<string, { dashboard_id?: number }>>({})
-const templateKeys = computed(() => Object.keys(templates.value).sort())
-
 const eligible = ref<GrafanaEligibleContainer[]>([])
 const imported = ref<GrafanaImportedItem[]>([])
-const selectedTemplate = ref('')
-const prometheusDsUid = ref('prometheus')
-const titlePrefix = ref('')
 
-const loadingTemplates = ref(false)
 const loadingEligible = ref(false)
 const loadingImported = ref(false)
 const importingByConfig = ref<Record<number, boolean>>({})
 const deletingById = ref<Record<number, boolean>>({})
 const isLoadingAny = computed(
-  () => loadingTemplates.value || loadingEligible.value || loadingImported.value
+  () => loadingEligible.value || loadingImported.value
 )
+
+const loadingManager = ref(false)
+const managerStatus = ref<any>(null)
 
 const confirmVisible = ref(false)
 const confirmMessage = ref('')
 const deleting = ref(false)
 const pendingDelete = ref<GrafanaImportedItem | null>(null)
-
-async function loadTemplates () {
-  loadingTemplates.value = true
-  try {
-    templates.value = await grafanaApi.getTemplates()
-    if (!selectedTemplate.value && templateKeys.value.length) {
-      selectedTemplate.value = templateKeys.value[0] || ''
-    }
-  } catch (e: any) {
-    showToast(e.response?.data?.detail || e.message || 'Не удалось загрузить шаблоны', 'error')
-  } finally {
-    loadingTemplates.value = false
-  }
-}
 
 async function loadImported () {
   loadingImported.value = true
@@ -232,60 +253,116 @@ async function loadEligible () {
 }
 
 async function loadAll () {
-  await Promise.all([loadTemplates(), loadEligible(), loadImported()])
+  await Promise.all([loadEligible(), loadImported()])
 }
+
+async function refreshManagerStatus () {
+  loadingManager.value = true
+  try {
+    managerStatus.value = await grafanaApi.getManagerStatus()
+  } catch (e: any) {
+    managerStatus.value = null
+    showToast(e.response?.data?.detail || e.message || 'Failed to get Grafana status', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+async function startManager () {
+  try {
+    loadingManager.value = true
+    const result = await grafanaApi.startManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Grafana started', 'success')
+  } catch (e: any) {
+    showToast(e.response?.data?.detail || e.message || 'Failed to start Grafana', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+async function stopManager () {
+  try {
+    loadingManager.value = true
+    const result = await grafanaApi.stopManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Grafana stopped', 'success')
+  } catch (e: any) {
+    showToast(e.response?.data?.detail || e.message || 'Failed to stop Grafana', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+async function restartManager () {
+  try {
+    loadingManager.value = true
+    const result = await grafanaApi.restartManager()
+    await refreshManagerStatus()
+    showToast(result?.message || 'Grafana restarted', 'success')
+  } catch (e: any) {
+    showToast(e.response?.data?.detail || e.message || 'Failed to restart Grafana', 'error')
+  } finally {
+    loadingManager.value = false
+  }
+}
+
+const managerStatusText = computed(() => {
+  if (!managerStatus.value) return ''
+  if (typeof managerStatus.value === 'string') return managerStatus.value
+  if (managerStatus.value.status) {
+    if (typeof managerStatus.value.status === 'string') return managerStatus.value.status
+    if (managerStatus.value.status.status) return managerStatus.value.status.status
+  }
+  try {
+    return JSON.stringify(managerStatus.value)
+  } catch {
+    return String(managerStatus.value)
+  }
+})
+
+const isManagerRunning = computed(() => {
+  const text = managerStatusText.value.toLowerCase()
+  if (!text) return false
+  return text.includes('running') || text.includes('up')
+})
+
+const managerStatusBadgeClass = computed(() => {
+  const text = managerStatusText.value.toLowerCase()
+  if (!text) return 'badge-secondary'
+  if (text.includes('running') || text.includes('up')) {
+    return 'badge-success'
+  }
+  if (text.includes('not found') || text.includes('down') || text.includes('stopped') || text.includes('exited')) {
+    return 'badge-danger'
+  }
+  return 'badge-secondary'
+})
 
 async function importForContainer (row: GrafanaEligibleContainer) {
   if (!row.metrics_ready) {
     showToast('Container is not ready: exporter must be running and metrics must be in main Prometheus config', 'error')
     return
   }
-  if (!selectedTemplate.value) {
-    // fallback may still resolve by stack template
-  }
-  const effectiveTemplate = resolveTemplateForContainer(row)
-  if (!effectiveTemplate) {
-    showToast('Не найден подходящий шаблон для выбранного контейнера', 'error')
+  if (row.has_grafana_dashboard) {
+    showToast('Dashboard for this container is already created', 'info')
     return
-  }
-  if (selectedTemplate.value && selectedTemplate.value !== effectiveTemplate) {
-    showToast(`Выбранный шаблон ${selectedTemplate.value} не подходит для stack ${row.stack}. Использую ${effectiveTemplate}.`, 'info')
   }
   importingByConfig.value[row.config_id] = true
   try {
     await grafanaApi.importDashboard({
-      template_key: effectiveTemplate,
-      prometheus_datasource_uid: prometheusDsUid.value || undefined,
-      title_prefix: titlePrefix.value || undefined,
+      prometheus_datasource_uid: 'prometheus',
       instance_suffix: row.container_name.replace(/[^a-zA-Z0-9_-]/g, '-'),
       overwrite: true
     })
     showToast(`Dashboard created for ${row.container_name}`, 'success')
     await loadImported()
+    await loadEligible()
   } catch (e: any) {
     showToast(e.response?.data?.detail || e.message || 'Failed to create dashboard', 'error')
   } finally {
     importingByConfig.value[row.config_id] = false
   }
-}
-
-function resolveTemplateForContainer (row: GrafanaEligibleContainer): string {
-  const keys = templateKeys.value
-  if (!keys.length) return ''
-  const stackKey = String(row.stack || '').toLowerCase()
-  const exact = keys.find(k => k.toLowerCase() === stackKey)
-  if (exact) return exact
-
-  if (selectedTemplate.value && keys.includes(selectedTemplate.value)) {
-    const selected = selectedTemplate.value.toLowerCase()
-    const sameFamily = (
-      (selected.includes('mongo') && stackKey.includes('mongo')) ||
-      ((selected.includes('postgres') || selected.includes('postgresql')) &&
-        (stackKey.includes('postgres') || stackKey.includes('postgresql')))
-    )
-    if (sameFamily) return selectedTemplate.value
-  }
-  return selectedTemplate.value && keys.includes(selectedTemplate.value) ? selectedTemplate.value : ''
 }
 
 function openHref (relative: string | null) {
@@ -319,6 +396,7 @@ async function confirmDelete () {
     confirmVisible.value = false
     pendingDelete.value = null
     await loadImported()
+    await loadEligible()
   } catch (e: any) {
     showToast(e.response?.data?.detail || e.message || 'Не удалось удалить', 'error')
   } finally {
@@ -329,6 +407,7 @@ async function confirmDelete () {
 
 onMounted(() => {
   loadAll()
+  refreshManagerStatus()
 })
 </script>
 
@@ -342,7 +421,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .page-title {
   font-size: 24px;
@@ -353,23 +432,34 @@ onMounted(() => {
   display: flex;
   gap: 10px;
 }
-.page-subtitle {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
 
-.settings-panel {
+.manager-panel {
   margin-bottom: 16px;
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg-card);
-}
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(200px, 1fr));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+.panel-title-inline {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: var(--text-primary);
+}
+.manager-status-line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.manager-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .content-layout {
@@ -395,7 +485,7 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 280px);
 }
 .input {
   padding: 8px 12px;
@@ -403,15 +493,6 @@ onMounted(() => {
   border-radius: 4px;
   background: var(--bg-primary);
   color: var(--text-primary);
-}
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.form-group label {
-  font-size: 12px;
-  color: var(--text-secondary);
 }
 .panel-header {
   display: flex;
@@ -532,6 +613,11 @@ onMounted(() => {
   background: var(--danger-bg, #dc3545);
   color: white;
   border-color: var(--danger-bg, #dc3545);
+}
+.btn-warning {
+  background: var(--warning-bg, #ffc107);
+  color: #212529;
+  border-color: #ffc107;
 }
 .btn-sm {
   padding: 4px 8px;

@@ -6,6 +6,7 @@ import sys
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.postgres.database import Base, engine
+from app.db.postgres.schema_patches import apply_schema_patches
 # Import all models to ensure they are registered with Base.metadata
 from app.models.postgres import Container, Host, PrometheusConfig
 
@@ -29,6 +30,7 @@ def init_db() -> None:
     try:
         logger.info("Starting database initialization...")
         Base.metadata.create_all(bind=engine)
+        apply_schema_patches()
         logger.info("Database tables created successfully!")
     except SQLAlchemyError as e:
         logger.error(f"Error initializing database: {e}")

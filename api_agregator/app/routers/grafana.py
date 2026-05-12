@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
+import requests
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,12 +16,17 @@ from app.db.redis.docker_containers import DockerContainers
 from app.models.postgres.grafana_dashboard import GrafanaDashboard
 from app.models.postgres.prometheus_config import PrometheusConfig
 from app.services.api_getaway import APIGateway
+from app.services.grafana_container_link import (
+    has_grafana_dashboard_for_config,
+    load_grafana_dashboard_link_index,
+)
 
 router = APIRouter()
 
 load_dotenv()
 grafana_generation_url = os.getenv("GRAFANA_GENERATION_URL")
 prometheus_generation_url = os.getenv("PROMETHEUS_GENERATION_URL")
+grafana_manager_url = os.getenv("GRAFANA_MANAGER_URL")
 
 
 def _generation_gateway() -> APIGateway:
@@ -30,6 +36,15 @@ def _generation_gateway() -> APIGateway:
             detail="GRAFANA_GENERATION_URL is not configured",
         )
     return APIGateway(grafana_generation_url)
+
+
+def get_grafana_manager_gateway() -> APIGateway:
+    if not grafana_manager_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GRAFANA_MANAGER_URL is not configured in environment",
+        )
+    return APIGateway(grafana_manager_url)
 
 
 def _main_config_jobs() -> set[str]:
@@ -50,6 +65,46 @@ def _main_config_jobs() -> set[str]:
         return set()
 
 
+def _pick_template_key(stack: str, user_template: Optional[str], available: set[str]) -> Optional[str]:
+    """
+    Выбор ключа шаблона из grafana_templates.yml по stack и опционально user_template
+    (эвристика как во фронте resolveTemplateForContainer).
+    """
+    if not available:
+        return user_template or None
+
+    stack_key = (stack or "").lower()
+    if stack_key in available:
+        return stack_key
+
+    exact = next((k for k in available if k.lower() == stack_key), None)
+    if exact:
+        return exact
+
+    if user_template and user_template in available:
+        selected = user_template.lower()
+        same_family = (
+            ("mongo" in selected and "mongo" in stack_key)
+            or (
+                ("postgres" in selected or "postgresql" in selected)
+                and ("postgres" in stack_key or "postgresql" in stack_key)
+            )
+        )
+        if same_family:
+            return user_template
+
+    for k in sorted(available):
+        lk = k.lower()
+        if "mongo" in stack_key and "mongo" in lk:
+            return k
+        if any(x in stack_key for x in ("postgres", "postgresql")) and any(
+            x in lk for x in ("postgres", "postgresql")
+        ):
+            return k
+
+    return user_template if user_template in available else None
+
+
 class ImportDashboardBody(BaseModel):
     template_key: Optional[str] = Field(None)
     dashboard_id: Optional[int] = None
@@ -66,6 +121,87 @@ async def grafana_templates() -> dict[str, Any]:
     return gw.make_request("GET", "/api/v1/grafana/templates", timeout=30.0)
 
 
+def _generation_base_url() -> str:
+    if not grafana_generation_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GRAFANA_GENERATION_URL is not configured",
+        )
+    return grafana_generation_url.rstrip("/")
+
+
+@router.get("/templates_yml")
+async def get_grafana_templates_yml() -> dict[str, str]:
+    """Сырое содержимое grafana_templates.yml (через grafana_generation)."""
+    url = f"{_generation_base_url()}/api/v1/grafana/templates_yml"
+    try:
+        r = requests.get(url, timeout=60)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=r.text or "Upstream error")
+        return {"content": r.text}
+    except HTTPException:
+        raise
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"grafana_generation unreachable: {e}",
+        ) from e
+
+
+@router.put("/templates_yml", status_code=status.HTTP_200_OK)
+async def put_grafana_templates_yml(content: str = Body(..., media_type="text/plain")) -> dict[str, Any]:
+    """Сохранить grafana_templates.yml (валидация YAML на стороне generation)."""
+    url = f"{_generation_base_url()}/api/v1/grafana/templates_yml"
+    try:
+        r = requests.put(
+            url,
+            data=content.encode("utf-8"),
+            headers={"Content-Type": "text/plain; charset=utf-8"},
+            timeout=60,
+        )
+        if r.status_code >= 400:
+            try:
+                detail = r.json().get("detail", r.text)
+            except Exception:
+                detail = r.text or "Upstream error"
+            raise HTTPException(status_code=r.status_code, detail=detail)
+        try:
+            return r.json()
+        except Exception:
+            return {"ok": True}
+    except HTTPException:
+        raise
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"grafana_generation unreachable: {e}",
+        ) from e
+
+
+@router.post("/manager/start", status_code=status.HTTP_200_OK)
+async def start_grafana_manager() -> dict[str, Any]:
+    api_gateway = get_grafana_manager_gateway()
+    return api_gateway.make_request("POST", "/api/v1/manage/grafana/start")
+
+
+@router.post("/manager/stop", status_code=status.HTTP_200_OK)
+async def stop_grafana_manager() -> dict[str, Any]:
+    api_gateway = get_grafana_manager_gateway()
+    return api_gateway.make_request("POST", "/api/v1/manage/grafana/stop")
+
+
+@router.get("/manager/status", status_code=status.HTTP_200_OK)
+async def status_grafana_manager() -> dict[str, Any]:
+    api_gateway = get_grafana_manager_gateway()
+    return api_gateway.make_request("GET", "/api/v1/manage/grafana/status")
+
+
+@router.post("/manager/restart", status_code=status.HTTP_200_OK)
+async def restart_grafana_manager() -> dict[str, Any]:
+    api_gateway = get_grafana_manager_gateway()
+    return api_gateway.make_request("POST", "/api/v1/manage/grafana/restart")
+
+
 @router.post("/import_dashboard", status_code=status.HTTP_200_OK)
 async def import_dashboard(
     body: ImportDashboardBody,
@@ -75,10 +211,10 @@ async def import_dashboard(
     gw = _generation_gateway()
     payload = body.model_dump(exclude_none=True)
 
-    # Server-side guard: resolve template by container stack to avoid wrong dashboard type.
-    resolved_stack = None
-    resolved_template = body.template_key
+    cfg: PrometheusConfig | None = None
+    resolved_template: Optional[str] = body.template_key
     suffix = (body.instance_suffix or "").strip()
+
     if suffix:
         cfg_rows = (
             db.query(PrometheusConfig)
@@ -91,24 +227,33 @@ async def import_dashboard(
         suffix_norm = suffix.lstrip("/").lower()
         cfg = next(
             (
-                r for r in cfg_rows
+                r
+                for r in cfg_rows
                 if str((r.container_name or "")).lstrip("/").lower() == suffix_norm
             ),
             None,
         )
-        if cfg and cfg.stack:
-            resolved_stack = str(cfg.stack).lower()
-            if not resolved_template or str(resolved_template).lower() != resolved_stack:
-                try:
-                    templates = gw.make_request("GET", "/api/v1/grafana/templates", timeout=20.0) or {}
-                    available = set((templates.get("templates") or {}).keys())
-                    if resolved_stack in available:
-                        resolved_template = resolved_stack
-                except Exception:
-                    # keep user-provided template if template index is unavailable
-                    pass
+
+    available: set[str] = set()
+    try:
+        templates = gw.make_request("GET", "/api/v1/grafana/templates", timeout=20.0) or {}
+        available = set((templates.get("templates") or {}).keys())
+    except Exception:
+        pass
+
+    if cfg and cfg.stack:
+        resolved_stack = str(cfg.stack).lower()
+        picked = _pick_template_key(resolved_stack, body.template_key, available)
+        if picked:
+            resolved_template = picked
+    elif resolved_template and available and resolved_template not in available:
+        picked = _pick_template_key(str(resolved_template).lower(), None, available)
+        if picked:
+            resolved_template = picked
+
     if resolved_template:
         payload["template_key"] = resolved_template
+
     resp = gw.make_request(
         "POST",
         "/api/v1/grafana/import_dashboard",
@@ -130,6 +275,13 @@ async def import_dashboard(
 
     tmpl_key = resolved_template or body.template_key
     sid = resp.get("dashboard_source_id") or body.dashboard_id
+    prom_cfg_id = cfg.id if cfg else None
+
+    if prom_cfg_id is not None:
+        db.query(GrafanaDashboard).filter(
+            GrafanaDashboard.prometheus_config_id == prom_cfg_id,
+            GrafanaDashboard.uid != uid,
+        ).delete(synchronize_session=False)
 
     row = db.query(GrafanaDashboard).filter(GrafanaDashboard.uid == uid).first()
     if row:
@@ -139,6 +291,8 @@ async def import_dashboard(
             row.source_dashboard_id = int(sid)
         row.slug = resp.get("slug") or row.slug
         row.url = resp.get("url") or row.url
+        if prom_cfg_id is not None:
+            row.prometheus_config_id = prom_cfg_id
     else:
         row = GrafanaDashboard(
             uid=uid,
@@ -147,6 +301,7 @@ async def import_dashboard(
             source_dashboard_id=int(sid) if sid is not None else None,
             slug=resp.get("slug"),
             url=resp.get("url"),
+            prometheus_config_id=prom_cfg_id,
         )
         db.add(row)
 
@@ -172,6 +327,7 @@ async def list_imported_dashboards(db: Session = Depends(get_db)) -> dict[str, A
                 "source_dashboard_id": r.source_dashboard_id,
                 "slug": r.slug,
                 "url": r.url,
+                "prometheus_config_id": r.prometheus_config_id,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
@@ -194,6 +350,8 @@ async def list_eligible_containers(db: Session = Depends(get_db)) -> dict[str, A
     configs = db.query(PrometheusConfig).filter(
         PrometheusConfig.status == "active"
     ).order_by(PrometheusConfig.created_at.desc()).all()
+
+    dash_cfg_ids, grafana_legacy_suffixes = load_grafana_dashboard_link_index(db)
 
     rows: list[dict[str, Any]] = []
     for cfg in configs:
@@ -241,6 +399,13 @@ async def list_eligible_containers(db: Session = Depends(get_db)) -> dict[str, A
                 "exporter_status": exporter_status,
                 "in_main_config": in_main_config,
                 "metrics_ready": metrics_ready,
+                "grafana_metrics_ready": metrics_ready,
+                "has_grafana_dashboard": has_grafana_dashboard_for_config(
+                    prometheus_config_id=cfg.id,
+                    container_name=cfg.container_name,
+                    dash_cfg_ids=dash_cfg_ids,
+                    legacy_suffixes=grafana_legacy_suffixes,
+                ),
                 "config_metadata": metadata,
             }
         )

@@ -1,4 +1,4 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -49,6 +49,10 @@ class ContainerData(BaseModel):
 
     info: Dict[str, Any] = Field(..., description="Информация о контейнере из Docker API")
     classification: ClassificationResult = Field(..., description="Результаты классификации контейнера")
+    prometheus_scrape_port: Optional[int] = Field(
+        default=None,
+        description="Порт на хосте для scrape (если отличается от exporter_port внутри контейнера)",
+    )
 
     @field_validator('info')
     @classmethod
