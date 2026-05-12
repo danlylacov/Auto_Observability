@@ -364,6 +364,7 @@ async function importForContainer (row: GrafanaEligibleContainer) {
     await grafanaApi.importDashboard({
       prometheus_datasource_uid: 'prometheus',
       instance_suffix: row.container_name.replace(/[^a-zA-Z0-9_-]/g, '-'),
+      prometheus_config_id: row.config_id,
       overwrite: true
     })
     showToast(`Dashboard created for ${row.container_name}`, 'success')

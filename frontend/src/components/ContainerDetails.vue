@@ -353,8 +353,7 @@ const handleStartAll = async () => {
       isExporterRunning: () =>
         containerData.value?.prometheus_config?.exporter?.running === true,
       isGrafanaMetricsReady: () =>
-        containerData.value?.prometheus_config?.grafana_metrics_ready === true,
-      instanceSuffix: name.replace(/[^a-zA-Z0-9_-]/g, '-')
+        containerData.value?.prometheus_config?.grafana_metrics_ready === true
     })
     if (result === 'timeout') {
       showToast(

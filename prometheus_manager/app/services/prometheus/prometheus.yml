@@ -1,15 +1,15 @@
 global:
   scrape_interval: 15s
 scrape_configs:
-- job_name: my-postgres_postgres
-  scrape_interval: 15s
-  scrape_timeout: 10s
-  file_sd_configs:
-  - files:
-    - targets/my-postgres_postgres.yml
 - job_name: my-mongo_mongodb
   scrape_interval: 15s
   scrape_timeout: 10s
   file_sd_configs:
   - files:
     - targets/my-mongo_mongodb.yml
+- job_name: my-postgres_postgres
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  file_sd_configs:
+  - files:
+    - targets/my-postgres_postgres.yml

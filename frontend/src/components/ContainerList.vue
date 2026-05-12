@@ -1007,8 +1007,7 @@ const handleStartAll = async (id: string, data: ContainerData) => {
       isExporterRunning: () =>
         containers.value[id]?.prometheus_config?.exporter?.running === true,
       isGrafanaMetricsReady: () =>
-        containers.value[id]?.prometheus_config?.grafana_metrics_ready === true,
-      instanceSuffix: name.replace(/[^a-zA-Z0-9_-]/g, '-')
+        containers.value[id]?.prometheus_config?.grafana_metrics_ready === true
     })
     if (result === 'timeout') {
       showToast(
@@ -1089,6 +1088,7 @@ const handleCreateGrafanaDashboard = async (containerId: string, data: Container
     await grafanaApi.importDashboard({
       prometheus_datasource_uid: 'prometheus',
       instance_suffix: name.replace(/[^a-zA-Z0-9_-]/g, '-'),
+      prometheus_config_id: pc.config_id,
       overwrite: true
     })
     showToast('Grafana dashboard created', 'success')

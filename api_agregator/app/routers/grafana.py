@@ -112,6 +112,12 @@ class ImportDashboardBody(BaseModel):
     instance_suffix: Optional[str] = None
     title_prefix: Optional[str] = None
     overwrite: bool = True
+    prometheus_config_id: Optional[int] = Field(
+        None,
+        description=(
+            "Если задан, конфиг и шаблон берутся по id (надёжнее, чем сопоставление instance_suffix с container_name)"
+        ),
+    )
 
 
 @router.get("/templates")
@@ -213,9 +219,19 @@ async def import_dashboard(
 
     cfg: PrometheusConfig | None = None
     resolved_template: Optional[str] = body.template_key
-    suffix = (body.instance_suffix or "").strip()
 
-    if suffix:
+    if body.prometheus_config_id is not None:
+        cfg = (
+            db.query(PrometheusConfig)
+            .filter(
+                PrometheusConfig.id == int(body.prometheus_config_id),
+                PrometheusConfig.status == "active",
+            )
+            .first()
+        )
+
+    suffix = (body.instance_suffix or "").strip()
+    if cfg is None and suffix:
         cfg_rows = (
             db.query(PrometheusConfig)
             .filter(
@@ -233,6 +249,11 @@ async def import_dashboard(
             ),
             None,
         )
+
+    if cfg is not None:
+        cn = str(cfg.container_name or "").lstrip("/")
+        if cn:
+            payload["instance_suffix"] = cn
 
     available: set[str] = set()
     try:
@@ -254,10 +275,12 @@ async def import_dashboard(
     if resolved_template:
         payload["template_key"] = resolved_template
 
+    forward_payload = {k: v for k, v in payload.items() if k != "prometheus_config_id"}
+
     resp = gw.make_request(
         "POST",
         "/api/v1/grafana/import_dashboard",
-        json_data=payload,
+        json_data=forward_payload,
         timeout=120.0,
     )
 

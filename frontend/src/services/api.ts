@@ -431,6 +431,7 @@ export const grafanaApi = {
     instance_suffix?: string
     title_prefix?: string
     overwrite?: boolean
+    prometheus_config_id?: number
   }): Promise<any> {
     const response = await api.post('/api/v1/grafana/import_dashboard', payload)
     return response.data
