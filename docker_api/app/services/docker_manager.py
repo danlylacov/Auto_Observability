@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, Union, List
 
 import docker
 
@@ -64,7 +64,7 @@ class DockerManager:
     def pull_and_run_container(
             self,
             image_name: str,
-            command: Optional[str] = None,
+            command: Optional[Union[str, List[str]]] = None,
             name: Optional[str] = None,
             detach: bool = True,
             ports: Optional[Dict[str, int]] = None,

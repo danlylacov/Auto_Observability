@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any
 
-from fastapi import APIRouter, status, HTTPException
+from fastapi import APIRouter, Query, status, HTTPException
 
 from app.models.container_data import ContainerData
 from app.services.minio import MinioService
@@ -12,7 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/", status_code=status.HTTP_200_OK)
-async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
+async def generate(
+    container_data: ContainerData,
+    host: str,
+    prometheus_scrape_port: int | None = Query(
+        default=None,
+        ge=1,
+        le=65535,
+        description="Host port for Prometheus scrape (overrides body if set)",
+    ),
+) -> Dict[str, Dict]:
     """
     Генерирует конфигурацию Prometheus для контейнера.
 
@@ -29,6 +38,8 @@ async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
     try:
         generator = PrometheusConfigGenerator()
         container_dict = container_data.model_dump()
+        if prometheus_scrape_port is not None:
+            container_dict["prometheus_scrape_port"] = int(prometheus_scrape_port)
 
         config = generator.generate_config(container_dict, host)
 
@@ -54,6 +65,18 @@ async def generate(container_data: ContainerData, host: str) -> Dict[str, Dict]:
             config['config']["target"],
             container_data.info['Id']
         )
+
+        scrape_cfg = config["config"]["scrape_config"]
+        target_doc = config["config"]["target"]
+        job_name = scrape_cfg.get("job_name")
+        if job_name:
+            main_rel = f"mainConfig/targets/{job_name}.yml"
+            try:
+                if minio_service.get_yaml_file(main_rel) is not None:
+                    minio_service.upload_main([target_doc], "mainConfig/targets", f"{job_name}.yml")
+                    logger.info("Synced mainConfig target %s with regenerated scrape port", main_rel)
+            except Exception as sync_err:
+                logger.warning("mainConfig target sync skipped for %s: %s", job_name, sync_err)
 
         return {
             'config': upload_data,

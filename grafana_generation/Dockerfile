@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app/
+COPY grafana_templates.yml /app/grafana_templates.yml
 
 EXPOSE 8000
 

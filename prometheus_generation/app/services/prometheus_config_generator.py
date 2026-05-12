@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import docker
 import yaml
@@ -85,6 +85,20 @@ class PrometheusConfigGenerator:
             return result[0][0]
         return None
 
+    @staticmethod
+    def _scraping_timing(value: Optional[Union[int, float, str]], default: str) -> str:
+        """Prometheus duration string from signatures.yml (int/float interpreted as seconds)."""
+        if value is None or value == "":
+            return default
+        if isinstance(value, bool):
+            return default
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and value != int(value):
+                return f"{value}s"
+            return f"{int(value)}s"
+        parsed = str(value).strip()
+        return parsed if parsed else default
+
     def _normalize_stack_name(self, stack: str) -> str:
         """
         Нормализует название стека для поиска в конфигурациях.
@@ -144,10 +158,17 @@ class PrometheusConfigGenerator:
 
         job_name = f"{container_name}{exporter_config.get('job_name_suffix', '')}"
 
+        scrape_interval = self._scraping_timing(
+            exporter_config.get('scrape_interval'), '15s'
+        )
+        scrape_timeout = self._scraping_timing(
+            exporter_config.get('scrape_timeout'), '30s'
+        )
+
         scrape_config = {
             'job_name': job_name,
-            'scrape_interval': '15s',
-            'scrape_timeout': '10s',
+            'scrape_interval': scrape_interval,
+            'scrape_timeout': scrape_timeout,
             'file_sd_configs': [
                 {
                     'files': [f'targets/{job_name}.yml']
@@ -155,10 +176,13 @@ class PrometheusConfigGenerator:
             ]
         }
 
-        exporter_port = exporter_config.get('exporter_port', '9187')
-        
+        scrape_port = exporter_config.get("prometheus_scrape_port")
+        if scrape_port is None:
+            scrape_port = exporter_config.get("exporter_port", "9187")
+        scrape_port = str(scrape_port).strip()
+
         target_yml = {
-            'targets': [f'{target_address}:{exporter_port}'],
+            'targets': [f'{target_address}:{scrape_port}'],
             'labels': labels
         }
 
@@ -206,7 +230,10 @@ class PrometheusConfigGenerator:
         if stack_key not in self.exporter_configs:
             return None
 
-        exporter_config = self.exporter_configs[stack_key]
+        exporter_config = dict(self.exporter_configs[stack_key])
+        scrape_override = container_data.get("prometheus_scrape_port")
+        if scrape_override is not None:
+            exporter_config["prometheus_scrape_port"] = int(scrape_override)
 
         network_name = self.get_container_network(container_info)
 

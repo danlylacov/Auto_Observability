@@ -5,6 +5,7 @@ import HostsView from './views/HostsView.vue'
 import ConfigView from './views/ConfigView.vue'
 import GenerateExporterView from './views/GenerateExporterView.vue'
 import PrometheusView from './views/PrometheusView.vue'
+import GrafanaView from './views/GrafanaView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -42,6 +43,11 @@ const router = createRouter({
       path: '/prometheus',
       name: 'prometheus',
       component: PrometheusView
+    },
+    {
+      path: '/grafana',
+      name: 'grafana',
+      component: GrafanaView
     }
   ]
 })

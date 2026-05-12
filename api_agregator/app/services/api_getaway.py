@@ -32,7 +32,9 @@ class APIGateway:
             endpoint: str,
             data: Optional[Dict] = None,
             params: Optional[Dict] = None,
-            json_data: Optional[Dict] = None
+            json_data: Optional[Dict] = None,
+            *,
+            timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Базовый метод для выполнения HTTP запросов к сервису.
@@ -56,13 +58,14 @@ class APIGateway:
             logger.debug(f"Request JSON data: {json_data}")
 
         try:
+            request_timeout = self.timeout if timeout is None else timeout
             response = requests.request(
                 method=method,
                 url=url,
                 data=data,
                 params=params,
                 json=json_data,
-                timeout=self.timeout
+                timeout=request_timeout,
             )
 
             logger.info(f"Response status: {response.status_code}")

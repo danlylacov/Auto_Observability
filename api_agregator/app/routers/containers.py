@@ -1,6 +1,7 @@
 """Containers API router module."""
 
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -10,6 +11,10 @@ from app.db.redis.docker_containers import DockerContainers
 from app.models.postgres.container import Container
 from app.models.postgres.prometheus_config import PrometheusConfig
 from app.services.api_getaway import APIGateway
+from app.services.grafana_container_link import (
+    has_grafana_dashboard_for_config,
+    load_grafana_dashboard_link_index,
+)
 from app.services.hosts_service import HostsService
 from app.services.minio_service import MinioService
 from app.services.update_containers import UpdateContainers
@@ -54,6 +59,21 @@ async def get_containers(
 
     if not data:
         return data
+
+    prometheus_generation_url = os.getenv("PROMETHEUS_GENERATION_URL")
+    main_jobs: set[str] = set()
+    if prometheus_generation_url:
+        try:
+            gw_main = APIGateway(prometheus_generation_url)
+            data_main = gw_main.make_request("GET", "/api/v1/main-config/", timeout=15.0)
+            main_cfg = data_main.get("main_config") if isinstance(data_main, dict) else None
+            for sc in (main_cfg or {}).get("scrape_configs") or []:
+                if isinstance(sc, dict) and sc.get("job_name"):
+                    main_jobs.add(str(sc["job_name"]))
+        except Exception:
+            pass
+
+    dash_cfg_ids, grafana_legacy_suffixes = load_grafana_dashboard_link_index(db)
 
     container_ids = list(data.keys())
 
@@ -214,6 +234,10 @@ async def get_containers(
                             list(exporter_index_by_name.keys())[:10]
                         )
 
+                in_main_config = bool(config.job_name and config.job_name in main_jobs)
+                grafana_metrics_ready = (
+                    config.status == "active" and exporter_running and in_main_config
+                )
                 container_data['prometheus_config'] = {
                     "config_id": config.id,
                     "status": config.status,
@@ -227,7 +251,14 @@ async def get_containers(
                         "running": exporter_running,
                         "container_id": exporter_container_id,
                         "info": exporter_info
-                    }
+                    },
+                    "has_grafana_dashboard": has_grafana_dashboard_for_config(
+                        prometheus_config_id=config.id,
+                        container_name=config.container_name,
+                        dash_cfg_ids=dash_cfg_ids,
+                        legacy_suffixes=grafana_legacy_suffixes,
+                    ),
+                    "grafana_metrics_ready": grafana_metrics_ready,
                 }
             except Exception as e:
                 logger.error(

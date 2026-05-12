@@ -1,5 +1,6 @@
 """Prometheus API router module."""
 
+import copy
 import logging
 import os
 from typing import Any, Dict
@@ -7,6 +8,8 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
+import yaml
 
 from app.db.postgres.database import get_db
 from app.db.redis.docker_containers import DockerContainers
@@ -16,6 +19,11 @@ from app.models.postgres.prometheus_config import PrometheusConfig
 from app.services.api_getaway import APIGateway
 from app.services.hosts_service import HostsService
 from app.services.minio_service import MinioService
+from app.services.prometheus_scrape_resolution import (
+    redis_host_key_for_api_host_id,
+    resolve_scrape_host_port_for_workload,
+    rewrite_targets_internal_port_to_host_port,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,6 +50,98 @@ def get_prometheus_manager_gateway() -> APIGateway:
             detail="PROMETHEUS_MANAGER_URL is not configured in environment"
         )
     return APIGateway(prometheus_manager_url)
+
+
+def _resolve_exporter_state(
+        all_containers_data: dict[str, Any],
+        *,
+        host_name: str,
+        container_name: str
+) -> tuple[bool, bool, dict[str, Any] | None, str | None]:
+    """Find exporter by host/name and return (found, running, info, id)."""
+    exporter_name = f"{container_name}-exporter".lower()
+    exporter_info = None
+    exporter_running = False
+    exporter_container_id = None
+
+    for exp_container_id, exp_container_data in all_containers_data.items():
+        if not isinstance(exp_container_data, dict):
+            continue
+        exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
+        exp_container_host = redis_host_key_for_api_host_id(exp_container_data)
+        if exp_container_name.lower() == exporter_name and exp_container_host == host_name:
+            exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
+            exporter_running = exp_container_status.lower() in ("running", "up")
+            exporter_container_id = exp_container_id
+            exporter_info = {
+                "container_id": exp_container_id,
+                "name": exp_container_name,
+                "status": exp_container_status,
+            }
+            return True, exporter_running, exporter_info, exporter_container_id
+
+    for exp_container_id, exp_container_data in all_containers_data.items():
+        if not isinstance(exp_container_data, dict):
+            continue
+        exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
+        if exp_container_name.lower() == exporter_name:
+            exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
+            exporter_running = exp_container_status.lower() in ("running", "up")
+            exporter_container_id = exp_container_id
+            exporter_info = {
+                "container_id": exp_container_id,
+                "name": exp_container_name,
+                "status": exp_container_status,
+            }
+            return True, exporter_running, exporter_info, exporter_container_id
+
+    return False, False, None, None
+
+
+def _signature_exporter_command(stack: str | None) -> list[str] | str | None:
+    """Universal fallback: read exporter_command for stack from signatures.yml."""
+    if not stack:
+        return None
+    candidates = ["/app/signatures.yml"]
+    current_file = os.path.abspath(__file__)
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    candidates.append(os.path.join(project_root, "signatures.yml"))
+    for path in candidates:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                signatures = yaml.safe_load(f) or {}
+            cfg = signatures.get(str(stack).lower().replace(" ", "_")) or {}
+            cmd = cfg.get("exporter_command")
+            if cmd:
+                return cmd
+        except Exception:
+            continue
+    return None
+
+
+def _generation_exporter_command(stack: str | None) -> list[str] | str | None:
+    """Read exporter_command from prometheus_generation signature endpoint."""
+    if not stack or not prometheus_generation_url:
+        return None
+    try:
+        gw = APIGateway(prometheus_generation_url)
+        data = gw.make_request("GET", "/api/v1/signature/get", timeout=15.0)
+        parsed = None
+        if isinstance(data, str):
+            parsed = yaml.safe_load(data)
+        elif isinstance(data, dict):
+            if "signature" in data and isinstance(data["signature"], str):
+                parsed = yaml.safe_load(data["signature"])
+            elif "signature.yml" in data and isinstance(data["signature.yml"], str):
+                parsed = yaml.safe_load(data["signature.yml"])
+            else:
+                parsed = data
+        signatures = parsed or {}
+        cfg = signatures.get(str(stack).lower().replace(" ", "_")) or {}
+        cmd = cfg.get("exporter_command")
+        return cmd if cmd else None
+    except Exception:
+        return None
 
 
 @router.post("/generate_config", status_code=status.HTTP_200_OK)
@@ -73,9 +173,20 @@ async def generate_config(
         raise HTTPException(status_code=404, detail="Host not found")
 
     host = host_dto.host
-
     docker_containers = DockerContainers()
-    container_data = docker_containers.get_container(container_id, host_id)
+    host_candidates = list(
+        dict.fromkeys(
+            x for x in (str(host_id).strip(), str(host_dto.id).strip()) if x
+        )
+    )
+    container_data: dict[str, Any] = {}
+    redis_host_key = host_candidates[0] if host_candidates else str(host_id).strip()
+    for hk in host_candidates:
+        cd = docker_containers.get_container(container_id, hk)
+        if cd:
+            container_data = cd
+            redis_host_key = hk
+            break
 
     if not container_data:
         return {"error": "Container not found"}
@@ -92,31 +203,77 @@ async def generate_config(
     networks = network_settings.get("Networks", {}) or {}
     labels = info.get("Config", {}).get("Labels", {}) or {}
 
-    target_address = host
-    if "bridge" in networks:
-        bridge_ip = (networks.get("bridge") or {}).get("IPAddress")
-        if bridge_ip:
-            target_address = bridge_ip
-    elif labels.get("com.docker.compose.service"):
-        target_address = labels["com.docker.compose.service"]
-    elif container_name:
-        target_address = container_name
+    target_address = host or "localhost"
+    if target_address in ("127.0.0.1",):
+        target_address = "localhost"
+    if not target_address:
+        if labels.get("com.docker.compose.service"):
+            target_address = labels["com.docker.compose.service"]
+        elif container_name:
+            target_address = container_name
+
+    all_containers_data = docker_containers.get_containers()
+    exporter_found, exporter_running, exporter_info, _ = _resolve_exporter_state(
+        all_containers_data,
+        host_name=redis_host_key,
+        container_name=container_name,
+    )
+    if not exporter_found:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exporter '{container_name}-exporter' not found on host '{redis_host_key}'. "
+                   f"Please start exporter first."
+        )
+    if not exporter_running:
+        exporter_status = exporter_info.get("status", "unknown") if exporter_info else "unknown"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Exporter '{container_name}-exporter' is not running "
+                   f"(status: {exporter_status}). Please start exporter first."
+        )
 
     stack = None
     if classification.get("result"):
         stack = classification["result"][0][0] if classification["result"] else None
 
-    logger.info(
-        "Proceeding with config generation for container %s (exporter will be started later)",
-        container_id
+    logger.info("Exporter is running; proceeding with config generation for container %s", container_id)
+
+    existing_cfg = (
+        db.query(PrometheusConfig)
+        .filter(
+            PrometheusConfig.container_id == container_id,
+            PrometheusConfig.status == "active",
+        )
+        .order_by(PrometheusConfig.created_at.desc())
+        .first()
+    )
+    pref_internal = existing_cfg.exporter_port if existing_cfg else None
+    scrape_port = resolve_scrape_host_port_for_workload(
+        config_info=(existing_cfg.config_metadata or {}).get("info") if existing_cfg else None,
+        exporter_internal_port=pref_internal,
+        workload_container_name=container_name,
+        redis_host_key=redis_host_key,
+        all_containers=all_containers_data,
     )
 
+    payload: dict[str, Any] = copy.deepcopy(container_data)
+    if scrape_port is not None:
+        payload["prometheus_scrape_port"] = scrape_port
+        logger.info(
+            "Using prometheus_scrape_port=%s for container %s (host scrape)",
+            scrape_port,
+            container_name,
+        )
+
     api_gateway = APIGateway(prometheus_generation_url)
+    gen_params: dict[str, Any] = {'host': target_address}
+    if scrape_port is not None:
+        gen_params['prometheus_scrape_port'] = int(scrape_port)
     config_data = api_gateway.make_request(
         method='POST',
         endpoint='/api/v1/generate/',
-        json_data=container_data,
-        params={'host': target_address}
+        json_data=payload,
+        params=gen_params,
     )
 
     exporter_config = config_data.get("info", {})
@@ -153,19 +310,28 @@ async def generate_config(
 
     job_name = f"{container_name}{job_name_suffix}"
 
+    info_block: dict[str, Any] = {
+        'container_name': container_name,
+        'stack': stack,
+        'exporter_image': exporter_image,
+        'exporter_port': exporter_port,
+        'target_address': target_address,
+        'job_name': job_name,
+        'network': network_name,
+        'exporter_env_vars': exporter_config.get("env_vars", {}),
+        'exporter_command': exporter_config.get("exporter_command"),
+    }
+    if scrape_port is not None:
+        info_block["scrape_host_port"] = scrape_port
+    elif existing_cfg:
+        prev_hp = (existing_cfg.config_metadata or {}).get("info", {}).get("scrape_host_port")
+        if prev_hp is not None:
+            info_block["scrape_host_port"] = prev_hp
+
     config_metadata = {
-        'host_name': host_id,
+        'host_name': redis_host_key,
         'config': config_file,
-        'info': {
-            'container_name': container_name,
-            'stack': stack,
-            'exporter_image': exporter_image,
-            'exporter_port': exporter_port,
-            'target_address': target_address,
-            'job_name': job_name,
-            'network': network_name,
-            'exporter_env_vars': exporter_config.get("env_vars", {}),
-        }
+        'info': info_block,
     }
 
     existing_config = db.query(PrometheusConfig).filter(
@@ -336,6 +502,18 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             container_id
         )
 
+    cmd = exporter_info.get("exporter_command")
+    if not cmd:
+        cmd = _signature_exporter_command(config.stack)
+    if not cmd:
+        cmd = _generation_exporter_command(config.stack)
+    if isinstance(cmd, list):
+        cmds = [str(x) for x in cmd if str(x).strip()]
+        if cmds:
+            json_data["command"] = cmds
+    elif isinstance(cmd, str) and cmd.strip():
+        json_data["command"] = cmd.strip()
+
     try:
         # Используем адрес хоста вместо глобального DOCKER_API_URL
         api_gateway = APIGateway(docker_api_host_url)
@@ -347,12 +525,20 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
         )
 
         logger.info("Exporter started successfully: %s", start_exporter)
+        md = dict(config.config_metadata or {})
+        inf = dict(md.get("info") or {})
+        inf["scrape_host_port"] = int(port)
+        md["info"] = inf
+        config.config_metadata = md
+        flag_modified(config, "config_metadata")
+        db.commit()
         return {
             "message": "Exporter started successfully",
             "exporter": start_exporter,
             "network": network_name,
             "environment": exporter_env_vars,
-            "stack": config.stack
+            "stack": config.stack,
+            "scrape_host_port": int(port),
         }
     except Exception as e:
         logger.error("Failed to start exporter: %s", e, exc_info=True)
@@ -437,7 +623,7 @@ async def get_all_configs(db: Session = Depends(get_db)) -> dict[str, Any]:
 
         for container_id, container_data in all_containers.items():
             container_name = container_data.get("info", {}).get("Name", "").lstrip("/")
-            container_host = container_data.get("host_name") or container_data.get("host_id")
+            container_host = redis_host_key_for_api_host_id(container_data)
 
             if "-exporter" in container_name.lower():
                 logger.debug(
@@ -609,84 +795,24 @@ async def add_main_config_service(
     host_name = config_metadata.get('host_name', 'localhost')
     container_name = config.container_name.lstrip("/")
     exporter_name = f"{container_name}-exporter"
-    exporter_name_lower = exporter_name.lower()
 
     docker_containers = DockerContainers()
     all_containers_data = docker_containers.get_containers()
-
-    exporter_found = False
-    exporter_running = False
-    exporter_info = None
-
     logger.info(
-        "Checking exporter before adding to main config: exporter_name=%s, "
-        "host_name=%s, job_name=%s",
+        "Checking exporter before adding to main config: exporter_name=%s, host_name=%s, job_name=%s",
         exporter_name, host_name, job_name
     )
-
-    for exp_container_id, exp_container_data in all_containers_data.items():
-        if isinstance(exp_container_data, dict):
-            exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
-            exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
-
-            logger.debug(
-                "Checking exporter candidate: name=%s, host=%s, "
-                "expected_name=%s, expected_host=%s",
-                exp_container_name, exp_container_host,
-                exporter_name_lower, host_name
-            )
-
-            if (exp_container_name.lower() == exporter_name_lower and
-                    exp_container_host == host_name):
-                exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
-                exporter_found = True
-                exporter_running = exp_container_status.lower() in ("running", "up")
-
-                exporter_info = {
-                    "container_id": exp_container_id,
-                    "name": exp_container_name,
-                    "status": exp_container_status,
-                }
-
-                logger.info(
-                    "Found exporter: name=%s, host=%s, "
-                    "status=%s, running=%s",
-                    exp_container_name, exp_container_host,
-                    exp_container_status, exporter_running
-                )
-                break
-
-    if not exporter_found:
-        logger.debug("Exporter not found with exact host match, trying fallback search by name only")
-        for exp_container_id, exp_container_data in all_containers_data.items():
-            if isinstance(exp_container_data, dict):
-                exp_container_name = exp_container_data.get("info", {}).get("Name", "").lstrip("/")
-                exp_container_host = exp_container_data.get("host_name") or exp_container_data.get("host_id")
-
-                if exp_container_name.lower() == exporter_name_lower:
-                    exp_container_status = exp_container_data.get("info", {}).get("State", {}).get("Status", "")
-                    exporter_found = True
-                    exporter_running = exp_container_status.lower() in ("running", "up")
-
-                    exporter_info = {
-                        "container_id": exp_container_id,
-                        "name": exp_container_name,
-                        "status": exp_container_status,
-                    }
-
-                    logger.warning(
-                        "Found exporter using fallback search: name=%s, "
-                        "host=%s (expected: %s), status=%s, running=%s",
-                        exp_container_name, exp_container_host,
-                        host_name, exp_container_status, exporter_running
-                    )
-                    break
+    exporter_found, exporter_running, exporter_info, _ = _resolve_exporter_state(
+        all_containers_data,
+        host_name=host_name,
+        container_name=container_name,
+    )
 
     if not exporter_found:
         logger.warning("Exporter '%s' not found on host '%s'", exporter_name, host_name)
         all_exporters = [
             (data.get("info", {}).get("Name", "").lstrip("/"),
-             data.get("host_name") or data.get("host_id"))
+             redis_host_key_for_api_host_id(data))
             for data in all_containers_data.values()
             if isinstance(data, dict) and "-exporter" in data.get("info", {}).get("Name", "").lower()
         ]
@@ -712,6 +838,25 @@ async def add_main_config_service(
 
     logger.info("Exporter check passed. Adding service '%s' to main config", job_name)
 
+    hp = resolve_scrape_host_port_for_workload(
+        config_info=(config.config_metadata or {}).get("info"),
+        exporter_internal_port=config.exporter_port,
+        workload_container_name=container_name,
+        redis_host_key=host_name,
+        all_containers=all_containers_data,
+    )
+    forward_request = request
+    if hp is not None and config.exporter_port is not None:
+        forward_request = AddServiceRequest(
+            scrape_config=request.scrape_config,
+            target=rewrite_targets_internal_port_to_host_port(
+                request.target,
+                internal_port=int(config.exporter_port),
+                host_port=int(hp),
+            ),
+            target_name=request.target_name,
+        )
+
     try:
         if not prometheus_generation_url:
             raise HTTPException(
@@ -723,13 +868,13 @@ async def add_main_config_service(
             f"Making request to prometheus_generation service: "
             f"{prometheus_generation_url}/api/v1/main-config/add"
         )
-        logger.debug("Request data: %s", request.model_dump())
+        logger.debug("Request data: %s", forward_request.model_dump())
 
         api_gateway = APIGateway(prometheus_generation_url)
         result = api_gateway.make_request(
             method='POST',
             endpoint='/api/v1/main-config/add',
-            json_data=request.model_dump()
+            json_data=forward_request.model_dump()
         )
 
         logger.info("Successfully added service '%s' to main config", job_name)

@@ -77,6 +77,30 @@ async def stop_grafana() -> Dict[str, Any]:
         )
 
 
+@router.post("/grafana/restart", status_code=status.HTTP_200_OK)
+async def restart_grafana() -> Dict[str, Any]:
+    """
+    Перезапускает контейнер Grafana (docker restart).
+    """
+    try:
+        manager = get_grafana_manager()
+        result = manager.restart_grafana()
+        if result:
+            return {"message": "Grafana restarted successfully", "status": "restarted"}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to restart Grafana",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error restarting Grafana: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to restart Grafana: {str(e)}",
+        )
+
+
 @router.get("/grafana/status", status_code=status.HTTP_200_OK)
 async def get_grafana_status() -> Dict[str, Any]:
     """
