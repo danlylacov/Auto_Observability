@@ -83,7 +83,11 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in eligible" :key="row.config_id">
+                <tr
+                  v-for="row in eligible"
+                  :key="row.config_id"
+                  :id="'grafana-config-' + row.config_id"
+                >
                   <td>{{ row.container_name }}</td>
                   <td><span class="badge badge-info">{{ row.stack }}</span></td>
                   <td class="job-name">{{ row.job_name }}</td>
@@ -163,7 +167,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in imported" :key="row.id">
+                <tr v-for="row in imported" :key="row.id" :id="'grafana-imported-' + row.id">
                   <td>{{ row.title || "-" }}</td>
                   <td>{{ row.template_key || "-" }}</td>
                   <td class="job-name">{{ row.uid }}</td>
@@ -200,8 +204,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { grafanaApi, type GrafanaEligibleContainer, type GrafanaImportedItem } from '../services/api'
+import { emitContainersRefresh } from '../utils/containersRefresh'
 import { showToast } from '../utils/toast'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
@@ -210,6 +216,9 @@ const grafanaUiHref = (
     ? import.meta.env.VITE_GRAFANA_EXTERNAL_URL
     : ''
 ) as string
+
+const route = useRoute()
+let grafanaHighlightTimer: ReturnType<typeof setTimeout> | null = null
 
 const eligible = ref<GrafanaEligibleContainer[]>([])
 const imported = ref<GrafanaImportedItem[]>([])
@@ -254,6 +263,8 @@ async function loadEligible () {
 
 async function loadAll () {
   await Promise.all([loadEligible(), loadImported()])
+  await nextTick()
+  scrollGrafanaTablesToQuery()
 }
 
 async function refreshManagerStatus () {
@@ -358,6 +369,7 @@ async function importForContainer (row: GrafanaEligibleContainer) {
     showToast(`Dashboard created for ${row.container_name}`, 'success')
     await loadImported()
     await loadEligible()
+    emitContainersRefresh()
   } catch (e: any) {
     showToast(e.response?.data?.detail || e.message || 'Failed to create dashboard', 'error')
   } finally {
@@ -397,6 +409,7 @@ async function confirmDelete () {
     pendingDelete.value = null
     await loadImported()
     await loadEligible()
+    emitContainersRefresh()
   } catch (e: any) {
     showToast(e.response?.data?.detail || e.message || 'Не удалось удалить', 'error')
   } finally {
@@ -405,10 +418,44 @@ async function confirmDelete () {
   }
 }
 
+function scrollGrafanaTablesToQuery () {
+  const raw = route.query.config_id
+  if (raw === undefined || raw === null) return
+  const s = Array.isArray(raw) ? raw[0] : raw
+  if (!s) return
+  const configId = Number(s)
+  if (Number.isNaN(configId)) return
+
+  const imp = imported.value.find((i) => i.prometheus_config_id === configId)
+  let el: HTMLElement | null = imp ? document.getElementById(`grafana-imported-${imp.id}`) : null
+  if (!el) {
+    const inEligible = eligible.value.some((e) => e.config_id === configId)
+    if (inEligible) {
+      el = document.getElementById(`grafana-config-${configId}`)
+    }
+  }
+  if (!el) return
+
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('grafana-row-highlight')
+  if (grafanaHighlightTimer) clearTimeout(grafanaHighlightTimer)
+  grafanaHighlightTimer = setTimeout(() => {
+    el!.classList.remove('grafana-row-highlight')
+    grafanaHighlightTimer = null
+  }, 4500)
+}
+
 onMounted(() => {
   loadAll()
   refreshManagerStatus()
 })
+
+watch(
+  () => route.query.config_id,
+  () => {
+    void nextTick().then(() => scrollGrafanaTablesToQuery())
+  }
+)
 </script>
 
 <style scoped>
@@ -544,6 +591,10 @@ onMounted(() => {
 }
 .config-table tbody tr:hover {
   background: var(--bg-secondary);
+}
+.config-table tbody tr.grafana-row-highlight {
+  outline: 2px solid var(--accent, #00bcd4);
+  outline-offset: 2px;
 }
 .job-name {
   font-family: monospace;

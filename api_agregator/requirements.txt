@@ -27,3 +27,6 @@ boto3
 
 # YAML
 pyyaml
+
+# JWT (must match users_api)
+PyJWT>=2.8.0

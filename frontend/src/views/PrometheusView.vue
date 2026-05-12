@@ -186,7 +186,11 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="config in configs" :key="config.config_id">
+                <tr
+                  v-for="config in configs"
+                  :key="config.config_id"
+                  :id="'prometheus-svc-' + config.config_id"
+                >
                   <td>{{ config.container_name }}</td>
                   <td>
                     <span class="badge badge-info">{{ config.stack }}</span>
@@ -239,7 +243,7 @@
                       </button>
                       <button 
                         v-else
-                        @click="removeFromMainConfig(config)" 
+                        @click="askRemoveFromMainConfig(config)" 
                         class="btn btn-sm btn-danger"
                         :disabled="loadingActions[config.config_id]"
                         title="Remove from main config"
@@ -313,24 +317,45 @@
       @confirm="handleConfirmDialogConfirm"
       @cancel="handleConfirmDialogCancel"
     />
+
+    <ConfirmDialog
+      v-if="removeMainPending"
+      :visible="showRemoveMainDialog"
+      title="Удалить сервис из main config"
+      :message="removeMainDialogMessage"
+      :details="removeMainDialogDetails"
+      :confirm-text="removeMainDialogConfirmText"
+      cancel-text="Отмена"
+      type="danger"
+      :loading="removeMainDialogLoading"
+      @confirm="confirmRemoveFromMainConfig"
+      @cancel="cancelRemoveFromMainConfig"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import yaml from 'js-yaml'
 import CodeBlock from '../components/CodeBlock.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { showToast } from '../utils/toast'
-import { 
-  prometheusApi, 
-  hostsApi, 
-  type PrometheusConfigInfo, 
-  type PrometheusConfigFiles, 
+import {
+  prometheusApi,
+  grafanaApi,
+  hostsApi,
+  type PrometheusConfigInfo,
+  type PrometheusConfigFiles,
   type HostInfo,
   type MainPrometheusConfig,
-  type AddServiceRequest
+  type AddServiceRequest,
+  type GrafanaImportedItem
 } from '../services/api'
+import { emitContainersRefresh } from '../utils/containersRefresh'
+
+const route = useRoute()
+let prometheusHighlightTimer: ReturnType<typeof setTimeout> | null = null
 
 const configs = ref<PrometheusConfigInfo[]>([])
 const hosts = ref<HostInfo[]>([])
@@ -376,6 +401,56 @@ const confirmDialogOptions = ref<{
   type: 'warning' | 'danger' | 'info'
   onConfirm: () => void
 } | null>(null)
+
+const showRemoveMainDialog = ref(false)
+const removeMainDialogLoading = ref(false)
+const removeMainPending = ref<{
+  config: PrometheusConfigInfo
+  grafanaImportedId: number | null
+  dashboardLabel: string | null
+} | null>(null)
+
+const grafanaImportedByConfigId = ref(new Map<number, GrafanaImportedItem>())
+
+const removeMainDialogMessage = computed(() => {
+  const p = removeMainPending.value
+  if (!p) return ''
+  const jn = p.config.job_name || '—'
+  return `Сервис «${jn}» (контейнер «${p.config.container_name}») будет удалён из основного конфига Prometheus.`
+})
+
+const removeMainDialogDetails = computed(() => {
+  const p = removeMainPending.value
+  if (!p) return undefined
+  if (p.grafanaImportedId != null && p.dashboardLabel) {
+    return `В Grafana есть связанный дашборд «${p.dashboardLabel}». Он будет удалён из Grafana и из базы данных.`
+  }
+  if (p.grafanaImportedId != null) {
+    return 'Связанный дашборд будет удалён из Grafana и из базы данных.'
+  }
+  return 'В списке импорта Grafana не найдено дашборда с привязкой к этому prometheus_config_id. Если дашборд создавался вручную, удалите его в Grafana отдельно.'
+})
+
+const removeMainDialogConfirmText = computed(() =>
+  removeMainPending.value?.grafanaImportedId != null
+    ? 'Удалить сервис и дашборд'
+    : 'Удалить сервис'
+)
+
+const loadGrafanaImportedIndex = async () => {
+  try {
+    const items = await grafanaApi.listImported()
+    const m = new Map<number, GrafanaImportedItem>()
+    for (const row of items) {
+      if (row.prometheus_config_id != null) {
+        m.set(row.prometheus_config_id, row)
+      }
+    }
+    grafanaImportedByConfigId.value = m
+  } catch (e) {
+    console.error('Failed to load Grafana imported dashboards:', e)
+  }
+}
 
 // Expanded sections state
 const expandedSections = ref({
@@ -539,11 +614,14 @@ const loadConfigs = async () => {
   try {
     const response = await prometheusApi.getAllConfigs()
     configs.value = response.configs
+    await loadGrafanaImportedIndex()
   } catch (error: any) {
     console.error('Failed to load configs:', error)
     showToast(error.response?.data?.detail || error.message || 'Failed to load configs', 'error')
   } finally {
     loading.value = false
+    await nextTick()
+    scrollPrometheusTableToQuery()
   }
 }
 
@@ -634,6 +712,8 @@ const performAddToMainConfig = async (config: PrometheusConfigInfo) => {
 
     await prometheusApi.addServiceToMainConfig(scrapeConfig)
     await updateManagerConfig()
+    await loadGrafanaImportedIndex()
+    emitContainersRefresh()
     showToast('Service added to main config successfully', 'success')
   } catch (error: any) {
     console.error('Failed to add service to main config:', error)
@@ -722,25 +802,54 @@ const handleConfirmDialogCancel = () => {
   confirmDialogOptions.value = null
 }
 
-const removeFromMainConfig = async (config: PrometheusConfigInfo) => {
-  loadingActions.value[config.config_id] = true
-  try {
-    const metadata = config.config_metadata || {}
-    const info = metadata.info || {}
-    
-    const jobName = info.job_name || config.job_name
+const askRemoveFromMainConfig = (config: PrometheusConfigInfo) => {
+  const dash = grafanaImportedByConfigId.value.get(config.config_id) ?? null
+  removeMainPending.value = {
+    config,
+    grafanaImportedId: dash?.id ?? null,
+    dashboardLabel: dash ? (dash.title || dash.uid || null) : null
+  }
+  showRemoveMainDialog.value = true
+}
 
+const cancelRemoveFromMainConfig = () => {
+  if (removeMainDialogLoading.value) return
+  showRemoveMainDialog.value = false
+  removeMainPending.value = null
+}
+
+const confirmRemoveFromMainConfig = async () => {
+  const p = removeMainPending.value
+  if (!p) return
+  removeMainDialogLoading.value = true
+  loadingActions.value[p.config.config_id] = true
+  try {
+    if (p.grafanaImportedId != null) {
+      await grafanaApi.deleteImported(p.grafanaImportedId)
+    }
+    const metadata = p.config.config_metadata || {}
+    const info = metadata.info || {}
+    const jobName = info.job_name || p.config.job_name
     await prometheusApi.removeServiceFromMainConfig({
       job_name: jobName,
       target_name: `${jobName}.yml`
     })
     await updateManagerConfig()
-    showToast('Service removed from main config successfully', 'success')
+    await loadGrafanaImportedIndex()
+    await loadConfigs()
+    emitContainersRefresh()
+    showToast('Сервис удалён из main config', 'success')
+    showRemoveMainDialog.value = false
+    removeMainPending.value = null
   } catch (error: any) {
     console.error('Failed to remove service from main config:', error)
-    showToast(error.response?.data?.detail || error.message || 'Failed to remove service from main config', 'error')
+    showToast(
+      error.response?.data?.detail || error.message || 'Failed to remove service from main config',
+      'error'
+    )
   } finally {
-    loadingActions.value[config.config_id] = false
+    removeMainDialogLoading.value = false
+    loadingActions.value[p.config.config_id] = false
   }
 }
 
@@ -820,6 +929,24 @@ const formatYaml = (content: any): string => {
   }
 }
 
+const scrollPrometheusTableToQuery = () => {
+  const raw = route.query.config_id
+  if (raw === undefined || raw === null) return
+  const s = Array.isArray(raw) ? raw[0] : raw
+  if (!s) return
+  const configId = Number(s)
+  if (Number.isNaN(configId)) return
+  const el = document.getElementById(`prometheus-svc-${configId}`)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('prometheus-row-highlight')
+  if (prometheusHighlightTimer) clearTimeout(prometheusHighlightTimer)
+  prometheusHighlightTimer = setTimeout(() => {
+    el.classList.remove('prometheus-row-highlight')
+    prometheusHighlightTimer = null
+  }, 4500)
+}
+
 onMounted(() => {
   loadConfigUpdatedState()
   loadHosts()
@@ -827,6 +954,13 @@ onMounted(() => {
   loadMainConfig()
   refreshManagerStatus()
 })
+
+watch(
+  () => route.query.config_id,
+  () => {
+    void nextTick().then(() => scrollPrometheusTableToQuery())
+  }
+)
 </script>
 
 <style scoped>
@@ -1075,6 +1209,11 @@ onMounted(() => {
 
 .config-table tbody tr:hover {
   background: var(--bg-secondary);
+}
+
+.config-table tbody tr.prometheus-row-highlight {
+  outline: 2px solid var(--accent, #00bcd4);
+  outline-offset: 2px;
 }
 
 .job-name {

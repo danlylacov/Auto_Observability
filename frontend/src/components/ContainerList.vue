@@ -1,5 +1,5 @@
 <template>
-  <div class="container-list">
+  <div class="container-list containers-list-root">
     <div class="toolbar">
       <div class="search-box">
         <input 
@@ -34,53 +34,66 @@
       </button>
     </div>
 
-    <div v-if="selectedContainers.size > 0" class="bulk-actions-bar">
-      <div class="bulk-actions-info">
-        <span class="selected-count">{{ selectedContainers.size }} container(s) selected</span>
-        <button @click="clearSelection" class="btn-link">Clear</button>
-      </div>
-      <div class="bulk-actions-buttons">
-        <button 
-          @click="handleBulkStart" 
-          class="btn btn-sm btn-success"
-          :disabled="bulkActionLoading"
-        >
-          <span v-if="bulkActionLoading" class="loading"></span>
-          <span v-else>Start Selected</span>
-        </button>
-        <button 
-          @click="handleBulkStop" 
-          class="btn btn-sm btn-danger"
-          :disabled="bulkActionLoading"
-        >
-          <span v-if="bulkActionLoading" class="loading"></span>
-          <span v-else>Stop Selected</span>
-        </button>
-        <button 
-          @click="handleBulkRemove" 
-          class="btn btn-sm btn-danger"
-          :disabled="bulkActionLoading"
-        >
-          <span v-if="bulkActionLoading" class="loading"></span>
-          <span v-else>Remove Selected</span>
-        </button>
-        <button 
-          @click="handleBulkGenerateConfig" 
-          class="btn btn-sm btn-primary"
-          :disabled="bulkActionLoading"
-        >
-          <span v-if="bulkActionLoading" class="loading"></span>
-          <span v-else>Generate Config</span>
-        </button>
-        <button 
-          @click="handleBulkStartExporter" 
-          class="btn btn-sm btn-success"
-          :disabled="bulkActionLoading"
-        >
-          <span v-if="bulkActionLoading" class="loading"></span>
-          <span v-else>Start Exporter</span>
-        </button>
-      </div>
+    <div class="bulk-strip">
+      <template v-if="selectedContainers.size > 0">
+        <div class="bulk-actions-info">
+          <span class="selected-count">{{ selectedContainers.size }} selected</span>
+          <button type="button" @click="clearSelection" class="btn-link">Clear</button>
+        </div>
+        <div class="bulk-actions-buttons">
+          <button
+            v-if="canMutateContainers"
+            type="button"
+            @click="handleBulkStart"
+            class="btn btn-sm btn-success"
+            :disabled="bulkActionLoading"
+          >
+            <span v-if="bulkActionLoading" class="loading"></span>
+            <span v-else>Start</span>
+          </button>
+          <button
+            v-if="canMutateContainers"
+            type="button"
+            @click="handleBulkStop"
+            class="btn btn-sm btn-danger"
+            :disabled="bulkActionLoading"
+          >
+            <span v-if="bulkActionLoading" class="loading"></span>
+            <span v-else>Stop</span>
+          </button>
+          <button
+            v-if="canMutateContainers"
+            type="button"
+            @click="handleBulkRemove"
+            class="btn btn-sm btn-danger"
+            :disabled="bulkActionLoading"
+          >
+            <span v-if="bulkActionLoading" class="loading"></span>
+            <span v-else>Remove</span>
+          </button>
+          <button
+            v-if="canMutatePrometheusGrafanaConfig"
+            type="button"
+            @click="handleBulkGenerateConfig"
+            class="btn btn-sm btn-primary"
+            :disabled="bulkActionLoading"
+          >
+            <span v-if="bulkActionLoading" class="loading"></span>
+            <span v-else>Generate config</span>
+          </button>
+          <button
+            v-if="canMutatePrometheusGrafanaConfig"
+            type="button"
+            @click="handleBulkStartExporter"
+            class="btn btn-sm btn-success"
+            :disabled="bulkActionLoading"
+          >
+            <span v-if="bulkActionLoading" class="loading"></span>
+            <span v-else>Start exporter</span>
+          </button>
+        </div>
+      </template>
+      <span v-else class="bulk-placeholder">Select rows with checkboxes for bulk actions</span>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -117,14 +130,16 @@
                   class="checkbox"
                 />
               </th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Image</th>
-              <th>Stack</th>
-              <th>Prometheus</th>
-              <th class="config-checkbox-column">In Config</th>
-              <th class="config-checkbox-column">Grafana</th>
-              <th>Actions</th>
+              <th class="col-name">Name</th>
+              <th class="col-center">Status</th>
+              <th class="col-image">Image</th>
+              <th class="col-center">Stack</th>
+              <th class="col-center">Config</th>
+              <th class="col-center">Exporter</th>
+              <th class="col-center">Grafana</th>
+              <th class="col-center">Running</th>
+              <th class="col-center col-actions">Actions</th>
+              <th class="col-center col-links">Links</th>
             </tr>
           </thead>
           <tbody>
@@ -138,7 +153,7 @@
                     class="checkbox"
                   />
                 </td>
-                <td>
+                <td class="col-name">
                   <div class="container-name-cell">
                     <span 
                       v-if="hasExporter(data)" 
@@ -152,156 +167,185 @@
                     </a>
                   </div>
                 </td>
-              <td>
+              <td class="col-center">
                 <span :class="['badge', getStatusBadgeClass(data.info.State?.Status)]">
                   {{ data.info.State?.Status || 'unknown' }}
                 </span>
               </td>
-              <td class="text-gray">{{ data.info.Config?.Image || 'Unknown' }}</td>
-              <td>
+              <td class="text-gray col-image cell-image">{{ data.info.Config?.Image || 'Unknown' }}</td>
+              <td class="col-center">
                 <span v-if="getStack(data.classification)" class="badge badge-info">
                   {{ getStack(data.classification) }}
                 </span>
                 <span v-else class="text-gray">-</span>
               </td>
-              <td>
-                <div v-if="data.prometheus_config" class="prometheus-info">
-                  <div class="prometheus-status-row">
-                    <span 
-                      :class="['badge', data.prometheus_config.status === 'active' ? 'badge-success' : 'badge-warning']"
-                      :title="`Config status: ${data.prometheus_config.status}`"
-                    >
-                      {{ data.prometheus_config.status === 'active' ? '✓ Config' : '⚠ Config' }}
-                    </span>
-                    <span 
-                      v-if="data.prometheus_config.exporter.exists"
-                      :class="['badge', data.prometheus_config.exporter.running ? 'badge-success' : 'badge-error']"
-                      :title="`Exporter ${data.prometheus_config.exporter.running ? 'running' : 'stopped'}`"
-                    >
-                      {{ data.prometheus_config.exporter.running ? '✓ Exporter' : '✗ Exporter' }}
-                    </span>
-                    <span 
-                      v-else
-                      class="badge badge-secondary"
-                      title="Exporter not found"
-                    >
-                      - Exporter
-                    </span>
-                  </div>
-                  <div v-if="data.prometheus_config.stack" class="prometheus-stack">
-                    <span class="text-xs text-gray">{{ data.prometheus_config.stack }}</span>
-                  </div>
-                </div>
+              <td class="col-center">
+                <span v-if="data.prometheus_config" class="badge badge-success">Yes</span>
+                <span v-else class="badge badge-secondary">No</span>
+              </td>
+              <td class="col-center">
+                <span
+                  v-if="data.prometheus_config?.exporter?.exists"
+                  :class="['badge', data.prometheus_config.exporter.running ? 'badge-success' : 'badge-error']"
+                >
+                  {{ data.prometheus_config.exporter.running ? 'Running' : 'Stopped' }}
+                </span>
+                <span v-else-if="data.prometheus_config" class="badge badge-secondary">Missing</span>
                 <span v-else class="text-gray">-</span>
               </td>
-              <td class="config-checkbox-column">
-                <span 
-                  v-if="data.prometheus_config"
-                  class="config-indicator config-indicator-success"
-                  title="Container has Prometheus config"
-                >
-                  ✓
-                </span>
-                <span 
-                  v-else
-                  class="config-indicator config-indicator-error"
-                  title="No Prometheus config"
-                >
-                  ✗
-                </span>
-              </td>
-              <td class="config-checkbox-column">
+              <td class="col-center">
                 <span
                   v-if="data.prometheus_config"
                   :class="[
-                    'config-indicator',
-                    data.prometheus_config.has_grafana_dashboard
-                      ? 'config-indicator-success'
-                      : 'config-indicator-error'
+                    'badge',
+                    data.prometheus_config.has_grafana_dashboard ? 'badge-success' : 'badge-secondary'
                   ]"
-                  :title="data.prometheus_config.has_grafana_dashboard ? 'Grafana dashboard linked' : 'No Grafana dashboard'"
                 >
-                  {{ data.prometheus_config.has_grafana_dashboard ? '✓' : '✗' }}
+                  {{ data.prometheus_config.has_grafana_dashboard ? 'Yes' : 'No' }}
                 </span>
                 <span v-else class="text-gray">-</span>
               </td>
-              <td>
+              <td class="col-center">
+                <span
+                  v-if="data.prometheus_config"
+                  :class="[
+                    'badge',
+                    isExporterAndGrafanaRunning(data) ? 'badge-success' : 'badge-secondary'
+                  ]"
+                  title="Exporter running and Grafana dashboard present"
+                >
+                  {{ isExporterAndGrafanaRunning(data) ? 'Yes' : 'No' }}
+                </span>
+                <span v-else class="text-gray">-</span>
+              </td>
+              <td class="col-center col-actions">
                 <div class="dropdown-container">
-                  <button 
-                    @click.stop="toggleDropdown($event, id)" 
+                  <button
+                    type="button"
                     class="btn btn-sm btn-secondary dropdown-toggle"
                     :disabled="actionLoading === id"
+                    @click.stop="toggleDropdown($event, id)"
                   >
                     <span v-if="actionLoading === id" class="loading"></span>
-                    <span v-else>Actions ▼</span>
+                    <span v-else>Actions</span>
                   </button>
                   <Teleport to="body">
                     <transition name="dropdown">
-                      <div 
-                        v-if="openDropdowns.has(id)" 
+                      <div
+                        v-if="openDropdowns.has(id)"
                         class="dropdown-menu"
-                        :style="dropdownPositions[id] ? {
-                          top: dropdownPositions[id].top + 'px',
-                          left: dropdownPositions[id].left + 'px'
-                        } : {}"
+                        :style="
+                          dropdownPositions[id]
+                            ? {
+                                top: dropdownPositions[id].top + 'px',
+                                left: dropdownPositions[id].left + 'px'
+                              }
+                            : {}
+                        "
                         @click.stop
                       >
-                      <button 
-                        v-if="data.info.State?.Status === 'running'"
-                        @click="handleStop(id); closeDropdown(id)" 
-                        class="dropdown-item"
-                        :disabled="actionLoading === id"
-                      >
-                        Stop
-                      </button>
-                      <button 
-                        v-else
-                        @click="handleStart(id); closeDropdown(id)" 
-                        class="dropdown-item"
-                        :disabled="actionLoading === id"
-                      >
-                        Start
-                      </button>
-                      <button 
-                        @click="handleRemove(id); closeDropdown(id)" 
-                        class="dropdown-item dropdown-item-danger"
-                        :disabled="actionLoading === id"
-                      >
-                        Remove
-                      </button>
-                      <div class="dropdown-divider"></div>
-                      <button 
-                        @click="handleGenerateConfig(id); closeDropdown(id)" 
-                        class="dropdown-item"
-                        :disabled="actionLoading === id"
-                      >
-                        Generate Config
-                      </button>
-                      <button 
-                        @click="handleStartExporter(id); closeDropdown(id)" 
-                        class="dropdown-item"
-                        :disabled="actionLoading === id"
-                      >
-                        Start Exporter
-                      </button>
-                      <button
-                        @click="handleCreateGrafanaDashboard(id, data); closeDropdown(id)"
-                        class="dropdown-item"
-                        :disabled="actionLoading === id || !canCreateGrafanaDashboard(data)"
-                      >
-                        Create Grafana dashboard
-                      </button>
-                      <div class="dropdown-divider"></div>
-                      <button 
-                        @click="viewDetails(id); closeDropdown(id)" 
-                        class="dropdown-item"
-                      >
-                        Details
-                      </button>
+                        <button
+                          v-if="canMutateContainers && data.info.State?.Status === 'running'"
+                          type="button"
+                          class="dropdown-item"
+                          :disabled="actionLoading === id"
+                          @click="handleStop(id); closeDropdown(id)"
+                        >
+                          Stop
+                        </button>
+                        <button
+                          v-else-if="canMutateContainers"
+                          type="button"
+                          class="dropdown-item"
+                          :disabled="actionLoading === id"
+                          @click="handleStart(id); closeDropdown(id)"
+                        >
+                          Start
+                        </button>
+                        <button
+                          v-if="canMutateContainers"
+                          type="button"
+                          class="dropdown-item dropdown-item-danger"
+                          :disabled="actionLoading === id"
+                          @click="handleRemove(id); closeDropdown(id)"
+                        >
+                          Remove
+                        </button>
+                        <div
+                          v-if="canMutateContainers && canMutatePrometheusGrafanaConfig"
+                          class="dropdown-divider"
+                        ></div>
+                        <button
+                          v-if="canMutatePrometheusGrafanaConfig"
+                          type="button"
+                          class="dropdown-item"
+                          :disabled="actionLoading === id || isGenerateConfigDisabled(data)"
+                          @click="handleGenerateConfig(id); closeDropdown(id)"
+                        >
+                          Generate config
+                        </button>
+                        <button
+                          v-if="canMutatePrometheusGrafanaConfig"
+                          type="button"
+                          class="dropdown-item"
+                          :disabled="actionLoading === id || isStartExporterDisabled(data)"
+                          @click="handleStartExporter(id); closeDropdown(id)"
+                        >
+                          Start exporter
+                        </button>
+                        <button
+                          v-if="canMutatePrometheusGrafanaConfig"
+                          type="button"
+                          class="dropdown-item"
+                          :disabled="actionLoading === id || isStartAllDisabled(data)"
+                          :title="startAllButtonTitle(data) || undefined"
+                          @click="handleStartAll(id, data); closeDropdown(id)"
+                        >
+                          Start all
+                        </button>
+                        <button
+                          v-if="canMutatePrometheusGrafanaConfig"
+                          type="button"
+                          class="dropdown-item"
+                          :title="grafanaButtonTitle(data) || undefined"
+                          :disabled="actionLoading === id || isCreateGrafanaDisabled(data)"
+                          @click="handleCreateGrafanaDashboard(id, data); closeDropdown(id)"
+                        >
+                          Create Grafana dashboard
+                        </button>
+                        <div
+                          v-if="canMutateContainers || canMutatePrometheusGrafanaConfig"
+                          class="dropdown-divider"
+                        ></div>
+                        <button type="button" class="dropdown-item" @click="viewDetails(id); closeDropdown(id)">
+                          Details
+                        </button>
                       </div>
                     </transition>
                   </Teleport>
                 </div>
+              </td>
+              <td class="col-center col-links">
+                <details
+                  v-if="containerExternalLinks(data).length > 0"
+                  class="links-details"
+                  @click.stop
+                >
+                  <summary class="links-summary">Links</summary>
+                  <div class="links-menu">
+                    <a
+                      v-for="link in containerExternalLinks(data)"
+                      :key="link.label"
+                      :href="link.href"
+                      class="links-menu-item"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {{ link.label }}
+                    </a>
+                  </div>
+                </details>
+                <span v-else class="text-gray">—</span>
               </td>
             </tr>
             <!-- Exporter row under container -->
@@ -311,7 +355,7 @@
               class="exporter-row"
             >
               <td class="checkbox-column"></td>
-              <td colspan="8">
+              <td colspan="10">
                 <div class="exporter-details">
                   <div class="exporter-info">
                     <span class="exporter-label">Exporter:</span>
@@ -320,8 +364,9 @@
                     <span class="exporter-image text-gray">{{ data.prometheus_config.exporter.info?.image || 'Unknown' }}</span>
                   </div>
                   <div class="exporter-actions">
-                    <button 
-                      @click="handleStopExporter(id, data)" 
+                    <button
+                      v-if="canMutatePrometheusGrafanaConfig"
+                      @click="handleStopExporter(id, data)"
                       class="btn btn-sm btn-warning"
                       :disabled="actionLoading === data.prometheus_config.exporter.container_id"
                       title="Stop Exporter"
@@ -329,8 +374,9 @@
                       <span v-if="actionLoading === data.prometheus_config.exporter.container_id" class="loading"></span>
                       <span v-else>Stop</span>
                     </button>
-                    <button 
-                      @click="handleRemoveExporter(id, data)" 
+                    <button
+                      v-if="canMutatePrometheusGrafanaConfig"
+                      @click="handleRemoveExporter(id, data)"
                       class="btn btn-sm btn-danger"
                       :disabled="actionLoading === data.prometheus_config.exporter.container_id"
                       title="Remove Exporter"
@@ -354,16 +400,41 @@
         </table>
       </div>
     </div>
+    <ConfirmDialog
+      v-if="exporterRemovePending"
+      :visible="showExporterRemoveDialog"
+      title="Удалить экспортер"
+      :message="exporterRemoveDialogMessage"
+      :details="exporterRemoveDialogDetails"
+      :confirm-text="exporterRemoveDialogConfirmText"
+      cancel-text="Отмена"
+      type="danger"
+      :loading="exporterRemoveDialogLoading"
+      @confirm="confirmExporterRemove"
+      @cancel="cancelExporterRemove"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { containerApi, grafanaApi, hostsApi, type ContainerData, type ContainersResponse, type HostInfo } from '../services/api'
+import {
+  containerApi,
+  grafanaApi,
+  hostsApi,
+  type ContainerData,
+  type ContainersResponse,
+  type HostInfo
+} from '../services/api'
 import { showToast } from '../utils/toast'
+import { usePermissions } from '../composables/usePermissions'
+import ConfirmDialog from './ConfirmDialog.vue'
+import { CONTAINERS_REFRESH_EVENT, emitContainersRefresh } from '../utils/containersRefresh'
+import { runContainerStartAllPipeline, type ReloadFn } from '../utils/containerStartAllPipeline'
 
 const router = useRouter()
+const { canMutateContainers, canMutatePrometheusGrafanaConfig } = usePermissions()
 
 const containers = ref<ContainersResponse>({})
 const hosts = ref<HostInfo[]>([])
@@ -377,26 +448,124 @@ const bulkActionLoading = ref(false)
 const openDropdowns = ref<Set<string>>(new Set())
 const dropdownPositions = ref<Record<string, { top: number; left: number }>>({})
 
+const showExporterRemoveDialog = ref(false)
+const exporterRemoveDialogLoading = ref(false)
+const exporterRemovePending = ref<{
+  hostId: string
+  exporterContainerId: string
+  appContainerLabel: string
+  grafanaImportedId: number | null
+  dashboardLabel: string | null
+  hadGrafanaFlag: boolean
+} | null>(null)
+
+const exporterRemoveDialogMessage = computed(() => {
+  const p = exporterRemovePending.value
+  if (!p) return ''
+  return `Контейнер экспортера «${p.appContainerLabel}» будет удалён с хоста.`
+})
+
+const exporterRemoveDialogDetails = computed(() => {
+  const p = exporterRemovePending.value
+  if (!p) return undefined
+  if (p.grafanaImportedId != null) {
+    const lab = p.dashboardLabel ? ` «${p.dashboardLabel}»` : ''
+    return `Будет удалён дашборд Grafana${lab} и соответствующая запись импорта.`
+  }
+  if (p.hadGrafanaFlag) {
+    return 'У контейнера отмечен дашборд Grafana, но запись в списке импорта не найдена. При необходимости удалите дашборд вручную в Grafana.'
+  }
+  return 'Связанного дашборда в списке импорта Grafana не найдено.'
+})
+
+const exporterRemoveDialogConfirmText = computed(() =>
+  exporterRemovePending.value?.grafanaImportedId != null
+    ? 'Удалить экспортер и дашборд'
+    : 'Удалить экспортер'
+)
+
+/** Absolute Grafana dashboard URL by Prometheus config id (from imported list). */
+const importedDashboardUrlByConfigId = ref<Map<number, string>>(new Map())
+
+const prometheusQueryHref = computed(() => {
+  const raw = (import.meta.env.VITE_PROMETHEUS_URL as string) || 'http://localhost:9090'
+  try {
+    const origin = new URL(raw).origin
+    return new URL('/query', origin).href
+  } catch {
+    return 'http://localhost:9090/query'
+  }
+})
+
+const grafanaExternalBase = computed(() => {
+  const g = (import.meta.env.VITE_GRAFANA_EXTERNAL_URL as string) || ''
+  return g.replace(/\/$/, '')
+})
+
+const toAbsoluteGrafanaUrl = (relativeOrAbsolute: string | null): string => {
+  if (!relativeOrAbsolute) return ''
+  if (/^https?:\/\//i.test(relativeOrAbsolute)) {
+    return relativeOrAbsolute
+  }
+  const base = grafanaExternalBase.value
+  if (!base) return ''
+  try {
+    return new URL(relativeOrAbsolute, base.endsWith('/') ? base : `${base}/`).href
+  } catch {
+    return `${base}${relativeOrAbsolute.startsWith('/') ? '' : '/'}${relativeOrAbsolute}`
+  }
+}
+
+const loadImportedLinksIndex = async () => {
+  try {
+    const items = await grafanaApi.listImported()
+    const m = new Map<number, string>()
+    for (const row of items) {
+      const pid = row.prometheus_config_id
+      if (pid == null || !row.url) continue
+      const abs = toAbsoluteGrafanaUrl(row.url)
+      if (abs) {
+        m.set(pid, abs)
+      }
+    }
+    importedDashboardUrlByConfigId.value = m
+  } catch (e) {
+    console.error('Failed to load Grafana imported dashboards for links:', e)
+  }
+}
+
+const containerExternalLinks = (data: ContainerData) => {
+  const pc = data.prometheus_config
+  if (!pc) return []
+  const out: { label: string; href: string }[] = []
+  const pq = prometheusQueryHref.value
+  if (pq) {
+    out.push({ label: 'Prometheus', href: pq })
+  }
+  if (pc.has_grafana_dashboard) {
+    const dash = importedDashboardUrlByConfigId.value.get(pc.config_id)
+    if (dash) {
+      out.push({ label: 'Grafana', href: dash })
+    }
+  }
+  return out
+}
+
 const toggleDropdown = (e: Event, containerId: string) => {
   e.stopPropagation()
   e.preventDefault()
-  
   const button = e.currentTarget as HTMLElement
   const rect = button.getBoundingClientRect()
-  
-  // Use setTimeout to prevent immediate closure by document click handler
   setTimeout(() => {
     if (openDropdowns.value.has(containerId)) {
       openDropdowns.value.delete(containerId)
       delete dropdownPositions.value[containerId]
     } else {
-      // Close all other dropdowns first
       openDropdowns.value.clear()
       openDropdowns.value.add(containerId)
-      // Store position for fixed positioning
       dropdownPositions.value[containerId] = {
         top: rect.bottom + 4,
-        left: rect.right - 160 // Align to right edge, accounting for menu width
+        left: rect.right - 200
       }
     }
   }, 0)
@@ -509,8 +678,10 @@ const getStatusBadgeClass = (status: string | undefined): string => {
   return 'badge-error'
 }
 
-const loadContainers = async () => {
-  loading.value = true
+const loadContainers = async (opts?: { silent?: boolean }) => {
+  if (!opts?.silent) {
+    loading.value = true
+  }
   try {
     const data = await containerApi.getContainers(selectedHostId.value || undefined)
     containers.value = data
@@ -534,10 +705,14 @@ const loadContainers = async () => {
   } catch (error: any) {
     console.error('Failed to load containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to load containers'
-    showToast(errorMsg, 'error')
+    if (!opts?.silent) {
+      showToast(errorMsg, 'error')
+    }
     containers.value = {}
   } finally {
-    loading.value = false
+    if (!opts?.silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -554,6 +729,7 @@ const handleRefresh = async () => {
   try {
     await containerApi.updateContainers()
     await loadContainers()
+    await loadImportedLinksIndex()
   } catch (error: any) {
     console.error('Failed to refresh containers:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to refresh containers'
@@ -626,7 +802,7 @@ const handleRemove = async (id: string) => {
   }
 }
 
-const handleStopExporter = async (containerId: string, containerData: any) => {
+const handleStopExporter = async (_containerId: string, containerData: any) => {
   const exporterContainerId = containerData.prometheus_config?.exporter?.container_id || 
                               containerData.prometheus_config?.exporter?.info?.Id
   if (!exporterContainerId) {
@@ -653,43 +829,82 @@ const handleStopExporter = async (containerId: string, containerData: any) => {
   }
 }
 
-const handleRemoveExporter = async (containerId: string, containerData: any) => {
-  if (!confirm('Are you sure you want to remove this exporter container?')) {
-    return
-  }
-  
-  const exporterContainerId = containerData.prometheus_config?.exporter?.container_id || 
-                              containerData.prometheus_config?.exporter?.info?.Id
+const handleRemoveExporter = async (_containerId: string, containerData: ContainerData) => {
+  const pc = containerData.prometheus_config
+  const expInfo = pc?.exporter?.info as { Id?: string } | null | undefined
+  const exporterContainerId = pc?.exporter?.container_id || expInfo?.Id
   if (!exporterContainerId) {
     showToast('Exporter container ID not found', 'error')
     return
   }
-  
-  actionLoading.value = exporterContainerId
-  try {
-    const hostId = containerData.host_id
-    if (!hostId) {
-      throw new Error('Host ID is not available')
+  const hostId = containerData.host_id
+  if (!hostId) {
+    showToast('Host ID is not available', 'error')
+    return
+  }
+
+  let grafanaImportedId: number | null = null
+  let dashboardLabel: string | null = null
+  if (pc?.config_id != null) {
+    try {
+      const items = await grafanaApi.listImported()
+      const row = items.find((i) => i.prometheus_config_id === pc.config_id)
+      if (row) {
+        grafanaImportedId = row.id
+        dashboardLabel = row.title || row.uid || null
+      }
+    } catch {
+      /* dialog still opens with fallback text */
     }
-    await containerApi.removeContainer(exporterContainerId, hostId, true)
+  }
+
+  const appName = containerData.info?.Name?.replace(/^\//, '') || _containerId
+  exporterRemovePending.value = {
+    hostId,
+    exporterContainerId,
+    appContainerLabel: appName,
+    grafanaImportedId,
+    dashboardLabel,
+    hadGrafanaFlag: pc?.has_grafana_dashboard === true
+  }
+  showExporterRemoveDialog.value = true
+}
+
+const cancelExporterRemove = () => {
+  if (exporterRemoveDialogLoading.value) return
+  showExporterRemoveDialog.value = false
+  exporterRemovePending.value = null
+}
+
+const confirmExporterRemove = async () => {
+  const p = exporterRemovePending.value
+  if (!p) return
+  exporterRemoveDialogLoading.value = true
+  actionLoading.value = p.exporterContainerId
+  try {
+    if (p.grafanaImportedId != null) {
+      await grafanaApi.deleteImported(p.grafanaImportedId)
+    }
+    await containerApi.removeContainer(p.exporterContainerId, p.hostId, true)
     showToast('Exporter removed successfully', 'success')
     await containerApi.updateContainers()
     await loadContainers()
+    await loadImportedLinksIndex()
+    emitContainersRefresh()
+    showExporterRemoveDialog.value = false
+    exporterRemovePending.value = null
   } catch (error: any) {
     console.error('Failed to remove exporter:', error)
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to remove exporter'
     showToast(errorMsg, 'error')
   } finally {
+    exporterRemoveDialogLoading.value = false
     actionLoading.value = null
   }
 }
 
 const viewDetails = (id: string) => {
   router.push(`/container/${id}`)
-}
-
-const viewGenerateExporter = (id: string) => {
-  router.push(`/container/${id}/generate-exporter`)
 }
 
 const handleGenerateConfig = async (id: string) => {
@@ -737,10 +952,118 @@ const handleStartExporter = async (id: string) => {
   }
 }
 
+const isStartAllDisabled = (data: ContainerData): boolean => {
+  const pc = data.prometheus_config
+  if (!pc) return false
+  return (
+    pc.exporter?.running === true &&
+    pc.status === 'active' &&
+    pc.has_grafana_dashboard === true
+  )
+}
+
+const startAllButtonTitle = (data: ContainerData): string => {
+  if (isStartAllDisabled(data)) {
+    return 'Exporter, active config and Grafana dashboard are already set up'
+  }
+  return ''
+}
+
+const handleStartAll = async (id: string, data: ContainerData) => {
+  const hostId = data.host_id
+  if (!hostId) {
+    showToast('Host ID is not available', 'error')
+    return
+  }
+  const portInput = prompt('Exporter port for Start all (default: 9100):', '9100')
+  if (portInput === null) {
+    return
+  }
+  const trimmed = portInput.trim()
+  const exporterPort = trimmed === '' ? 9100 : parseInt(trimmed, 10)
+  if (Number.isNaN(exporterPort) || exporterPort < 1024 || exporterPort > 65535) {
+    showToast('Invalid port. Use 1024–65535.', 'error')
+    return
+  }
+  const name = data.info.Name?.replace(/^\//, '') || ''
+  if (!name) {
+    showToast('Container name is missing', 'error')
+    return
+  }
+
+  const reload: ReloadFn = async (_opts?: { silent?: boolean }) => {
+    await loadContainers()
+    await loadImportedLinksIndex()
+  }
+
+  actionLoading.value = id
+  try {
+    const result = await runContainerStartAllPipeline({
+      containerId: id,
+      hostId,
+      exporterPort,
+      skipUpExporter: data.prometheus_config?.exporter?.running === true,
+      reload,
+      isExporterRunning: () =>
+        containers.value[id]?.prometheus_config?.exporter?.running === true,
+      isGrafanaMetricsReady: () =>
+        containers.value[id]?.prometheus_config?.grafana_metrics_ready === true,
+      instanceSuffix: name.replace(/[^a-zA-Z0-9_-]/g, '-')
+    })
+    if (result === 'timeout') {
+      showToast(
+        'Timed out waiting for Prometheus metrics. Check Prometheus and main config.',
+        'warning',
+        8000
+      )
+    } else {
+      showToast('Start all completed', 'success')
+    }
+    emitContainersRefresh()
+  } catch (error: any) {
+    console.error('Start all failed:', error)
+    const errorMsg = error.response?.data?.detail || error.message || 'Start all failed'
+    showToast(errorMsg, 'error')
+  } finally {
+    actionLoading.value = null
+  }
+}
+
 const canCreateGrafanaDashboard = (data: ContainerData): boolean => {
   const pc = data.prometheus_config
   if (!pc) return false
   return pc.grafana_metrics_ready === true
+}
+
+const isExporterAndGrafanaRunning = (data: ContainerData): boolean => {
+  const pc = data.prometheus_config
+  if (!pc) return false
+  return pc.exporter.running === true && pc.has_grafana_dashboard === true
+}
+
+const isGenerateConfigDisabled = (data: ContainerData): boolean => {
+  return data.prometheus_config?.status === 'active'
+}
+
+const isStartExporterDisabled = (data: ContainerData): boolean => {
+  return data.prometheus_config?.exporter?.running === true
+}
+
+const isCreateGrafanaDisabled = (data: ContainerData): boolean => {
+  if (data.prometheus_config?.has_grafana_dashboard) {
+    return true
+  }
+  return !canCreateGrafanaDashboard(data)
+}
+
+const grafanaButtonTitle = (data: ContainerData): string => {
+  if (data.prometheus_config?.has_grafana_dashboard) {
+    return 'Dashboard already linked'
+  }
+  if (!canCreateGrafanaDashboard(data)) {
+    return 'Wait for metrics (exporter + main Prometheus config)'
+  }
+  return ''
 }
 
 const handleCreateGrafanaDashboard = async (containerId: string, data: ContainerData) => {
@@ -770,6 +1093,8 @@ const handleCreateGrafanaDashboard = async (containerId: string, data: Container
     })
     showToast('Grafana dashboard created', 'success')
     await loadContainers()
+    await loadImportedLinksIndex()
+    emitContainersRefresh()
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || error.message || 'Failed to create Grafana dashboard'
     showToast(errorMsg, 'error')
@@ -1008,11 +1333,17 @@ watch(selectedHostId, () => {
   loadContainers()
 })
 
+const onContainersRefreshEvent = () => {
+  void loadContainers().then(() => loadImportedLinksIndex())
+}
+
 onMounted(() => {
-  loadHosts()
-  loadContainers()
-  
-  // Close dropdowns when clicking outside
+  void (async () => {
+    await loadHosts()
+    await loadContainers()
+    await loadImportedLinksIndex()
+  })()
+  window.addEventListener(CONTAINERS_REFRESH_EVENT, onContainersRefreshEvent)
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement
     if (!target.closest('.dropdown-container') && !target.closest('.dropdown-menu')) {
@@ -1020,11 +1351,17 @@ onMounted(() => {
     }
   })
 })
+
+onUnmounted(() => {
+  window.removeEventListener(CONTAINERS_REFRESH_EVENT, onContainersRefreshEvent)
+})
 </script>
 
 <style scoped>
-.container-list {
+.container-list.containers-list-root {
   padding: 16px 0;
+  width: 100%;
+  max-width: none;
 }
 
 .toolbar {
@@ -1061,6 +1398,7 @@ onMounted(() => {
 
 .table-container {
   overflow-x: auto;
+  width: 100%;
   background-color: var(--bg-card);
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -1068,8 +1406,9 @@ onMounted(() => {
 
 .containers-table {
   width: 100%;
+  min-width: 1240px;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .containers-table thead {
@@ -1077,22 +1416,48 @@ onMounted(() => {
 }
 
 .containers-table th {
-  padding: 8px 12px;
-  text-align: left;
+  padding: 8px 10px;
+  text-align: center;
   font-weight: 600;
   font-size: 13px;
   color: var(--text-primary);
   border-bottom: 2px solid var(--border);
+  vertical-align: middle;
+}
+
+.containers-table th.col-name,
+.containers-table th.col-image {
+  text-align: left;
 }
 
 .containers-table td {
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   word-break: break-word;
   overflow: visible;
   text-overflow: ellipsis;
   position: relative;
+  vertical-align: middle;
+}
+
+.containers-table td.col-center {
+  text-align: center;
+}
+
+.containers-table td.col-name {
+  text-align: left;
+}
+
+.containers-table td.col-image {
+  text-align: left;
+  max-width: 280px;
+}
+
+.containers-table td.cell-image {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .containers-table tbody tr:hover {
@@ -1120,7 +1485,7 @@ onMounted(() => {
 }
 
 .dropdown-toggle {
-  min-width: 80px;
+  min-width: 88px;
 }
 
 .dropdown-menu {
@@ -1130,7 +1495,7 @@ onMounted(() => {
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10000;
-  min-width: 160px;
+  min-width: 200px;
   padding: 4px 0;
   margin-top: 4px;
 }
@@ -1180,6 +1545,61 @@ onMounted(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+.col-links {
+  width: 88px;
+  min-width: 88px;
+}
+
+.links-details {
+  position: relative;
+  text-align: left;
+}
+
+.links-summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.links-summary::-webkit-details-marker {
+  display: none;
+}
+
+.links-details[open] .links-summary {
+  border-color: var(--accent);
+}
+
+.links-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 140px;
+  padding: 4px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+}
+
+.links-menu-item {
+  display: block;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.links-menu-item:hover {
+  background: var(--bg-secondary);
 }
 
 .btn-sm {
@@ -1290,38 +1710,26 @@ onMounted(() => {
   accent-color: var(--accent);
 }
 
-.config-checkbox-column {
-  width: 80px;
-  min-width: 80px;
-  max-width: 80px;
-  text-align: center;
-}
-
-.config-indicator {
-  font-size: 18px;
-  font-weight: bold;
-  display: inline-block;
-}
-
-.config-indicator-success {
-  color: var(--success-text, #28a745);
-}
-
-.config-indicator-error {
-  color: var(--danger-text, #dc3545);
-}
-
-.bulk-actions-bar {
+.bulk-strip {
+  min-height: 52px;
+  box-sizing: border-box;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
   margin-bottom: 16px;
   background-color: var(--bg-card);
   border-radius: 8px;
   border: 1px solid var(--border);
-  flex-wrap: wrap;
-  gap: 12px;
+}
+
+.bulk-placeholder {
+  font-size: 13px;
+  color: var(--text-secondary);
+  width: 100%;
+  text-align: center;
 }
 
 .bulk-actions-info {
@@ -1354,23 +1762,6 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.prometheus-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.prometheus-status-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.prometheus-stack {
-  margin-top: 2px;
 }
 
 .badge-secondary {

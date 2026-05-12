@@ -18,7 +18,7 @@ const route = useRoute()
 const containerId = computed(() => route.params.id as string)
 
 const goBack = () => {
-  router.push('/')
+  router.push('/containers')
 }
 </script>
 

@@ -137,4 +137,8 @@ def mock_docker_client():
     return client
 
 
+@pytest.fixture
+def skip_jwt_auth(monkeypatch):
+    """Отключает JWT middleware в api_agregator для тестов роутеров с моками."""
+    monkeypatch.setenv("SKIP_JWT_AUTH", "1")
 

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { accessToken, clearSession } from '../auth/session'
 
 // Используем относительный путь для production (через nginx прокси) или значение из env
 const API_URL = import.meta.env.VITE_API_URL || ''
@@ -16,6 +17,10 @@ const api = axios.create({
 // Добавляем interceptor для логирования запросов
 api.interceptors.request.use(
   (config) => {
+    const t = accessToken.value || localStorage.getItem('access_token')
+    if (t) {
+      config.headers.Authorization = `Bearer ${t}`
+    }
     console.log(`Making ${config.method?.toUpperCase()} request to: ${config.url}`)
     return config
   },
@@ -38,6 +43,13 @@ api.interceptors.response.use(
       status: error.response?.status,
       data: error.response?.data
     })
+    if (error.response?.status === 401) {
+      clearSession()
+      if (!window.location.pathname.endsWith('/login')) {
+        const q = encodeURIComponent(window.location.pathname + window.location.search)
+        window.location.assign(`/login?redirect=${q}`)
+      }
+    }
     return Promise.reject(error)
   }
 )
@@ -479,6 +491,57 @@ export const grafanaApi = {
     const response = await api.put('/api/v1/grafana/templates_yml', content, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     })
+    return response.data
+  }
+}
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  role: string
+}
+
+export interface MeResponse {
+  username: string
+  role: string
+  is_active: boolean
+}
+
+export interface UserRow {
+  id: number
+  username: string
+  role: string
+  is_active: boolean
+}
+
+export const authApi = {
+  async login(username: string, password: string): Promise<LoginResponse> {
+    const response = await api.post<LoginResponse>('/api/v1/auth/login', { username, password })
+    return response.data
+  },
+
+  async me(): Promise<MeResponse> {
+    const response = await api.get<MeResponse>('/api/v1/auth/me')
+    return response.data
+  }
+}
+
+export const usersAdminApi = {
+  async list(): Promise<UserRow[]> {
+    const response = await api.get<UserRow[]>('/api/v1/users')
+    return response.data
+  },
+
+  async create(payload: { username: string; password: string; role: string }): Promise<UserRow> {
+    const response = await api.post<UserRow>('/api/v1/users', payload)
+    return response.data
+  },
+
+  async patch(
+    id: number,
+    payload: { role?: string; password?: string; is_active?: boolean }
+  ): Promise<UserRow> {
+    const response = await api.patch<UserRow>(`/api/v1/users/${id}`, payload)
     return response.data
   }
 }
