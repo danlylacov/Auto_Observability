@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
+from app.auth.middleware import JwtAuthMiddleware
 from app.db.postgres.schema_patches import apply_schema_patches
 from app.routers import containers, grafana, hosts, prometheus
 
@@ -38,6 +39,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(JwtAuthMiddleware)
 
 
 @app.exception_handler(OperationalError)

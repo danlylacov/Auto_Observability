@@ -7,10 +7,29 @@
           <span v-if="loading" class="loading"></span>
           <span v-else>Refresh</span>
         </button>
-        <button class="btn btn-primary" @click="openCreateForm">
+        <button v-if="canMutateHosts" class="btn btn-primary" @click="openCreateForm">
           Add host
         </button>
       </div>
+    </div>
+
+    <div class="hosts-bulk-strip">
+      <template v-if="selectedHostIds.size > 0 && canMutateHosts">
+        <div class="bulk-info">
+          <span>{{ selectedHostIds.size }} selected</span>
+          <button type="button" class="btn-link" @click="clearHostSelection">Clear</button>
+        </div>
+        <button
+          type="button"
+          class="btn btn-sm btn-danger"
+          :disabled="bulkHostsLoading"
+          @click="bulkDeleteHosts"
+        >
+          <span v-if="bulkHostsLoading" class="loading"></span>
+          <span v-else>Delete selected</span>
+        </button>
+      </template>
+      <span v-else class="bulk-placeholder">Select hosts with checkboxes to delete in bulk</span>
     </div>
 
     <div v-if="loading && hosts.length === 0" class="loading-state">
@@ -22,6 +41,14 @@
       <table class="hosts-table" v-if="hosts.length > 0">
         <thead>
           <tr>
+            <th class="checkbox-column">
+              <input
+                type="checkbox"
+                class="checkbox"
+                :checked="allHostsSelected"
+                @change="toggleSelectAllHosts"
+              />
+            </th>
             <th>Name</th>
             <th>Host</th>
             <th>Port</th>
@@ -31,6 +58,14 @@
         </thead>
         <tbody>
           <tr v-for="host in hosts" :key="host.id">
+            <td class="checkbox-column">
+              <input
+                type="checkbox"
+                class="checkbox"
+                :checked="selectedHostIds.has(host.id)"
+                @change="toggleHostSelection(host.id, $event)"
+              />
+            </td>
             <td>{{ host.name || '-' }}</td>
             <td>{{ host.host }}</td>
             <td>{{ host.port }}</td>
@@ -45,10 +80,18 @@
             </td>
             <td>
               <div class="action-buttons">
-                <button class="btn btn-sm btn-secondary" @click="editHost(host)">
+                <button
+                  v-if="canMutateHosts"
+                  class="btn btn-sm btn-secondary"
+                  @click="editHost(host)"
+                >
                   Edit
                 </button>
-                <button class="btn btn-sm btn-danger" @click="deleteHost(host.id)">
+                <button
+                  v-if="canMutateHosts"
+                  class="btn btn-sm btn-danger"
+                  @click="deleteHost(host.id)"
+                >
                   Delete
                 </button>
               </div>
@@ -97,13 +140,78 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { hostsApi, type HostInfo } from '../services/api'
 import { showToast } from '../utils/toast'
+import { usePermissions } from '../composables/usePermissions'
+
+const { canMutateHosts } = usePermissions()
 
 const hosts = ref<HostInfo[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const selectedHostIds = ref<Set<string>>(new Set())
+const bulkHostsLoading = ref(false)
+
+const allHostsSelected = computed(() => {
+  if (hosts.value.length === 0) return false
+  return hosts.value.every((h) => selectedHostIds.value.has(h.id))
+})
+
+const toggleHostSelection = (id: string, event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  const next = new Set(selectedHostIds.value)
+  if (checked) {
+    next.add(id)
+  } else {
+    next.delete(id)
+  }
+  selectedHostIds.value = next
+}
+
+const toggleSelectAllHosts = (event: Event) => {
+  const checked = (event.target as HTMLInputElement).checked
+  if (checked) {
+    selectedHostIds.value = new Set(hosts.value.map((h) => h.id))
+  } else {
+    selectedHostIds.value = new Set()
+  }
+}
+
+const clearHostSelection = () => {
+  selectedHostIds.value = new Set()
+}
+
+const bulkDeleteHosts = async () => {
+  if (selectedHostIds.value.size === 0) return
+  if (!confirm(`Delete ${selectedHostIds.value.size} host(s)?`)) {
+    return
+  }
+  bulkHostsLoading.value = true
+  const ids = [...selectedHostIds.value]
+  let failed = 0
+  for (const id of ids) {
+    try {
+      await hostsApi.deleteHost(id)
+    } catch (e) {
+      failed++
+      console.error(e)
+    }
+  }
+  try {
+    await hostsApi.refreshHosts()
+  } catch {
+    /* ignore */
+  }
+  await loadHosts()
+  clearHostSelection()
+  bulkHostsLoading.value = false
+  if (failed > 0) {
+    showToast(`Deleted with ${failed} error(s)`, 'warning')
+  } else {
+    showToast('Hosts deleted', 'success')
+  }
+}
 
 const showForm = ref(false)
 const editingHost = ref<HostInfo | null>(null)
@@ -181,6 +289,7 @@ const saveHost = async () => {
     }
     await hostsApi.refreshHosts()
     await loadHosts()
+    clearHostSelection()
     showForm.value = false
   } catch (error: any) {
     console.error('Failed to save host:', error)
@@ -199,6 +308,9 @@ const deleteHost = async (id: string) => {
     await hostsApi.deleteHost(id)
     await hostsApi.refreshHosts()
     await loadHosts()
+    const sel = new Set(selectedHostIds.value)
+    sel.delete(id)
+    selectedHostIds.value = sel
   } catch (error: any) {
     console.error('Failed to delete host:', error)
     const msg = error.response?.data?.detail || error.message || 'Failed to delete host'
@@ -235,6 +347,57 @@ onMounted(() => {
   gap: 8px;
 }
 
+.hosts-bulk-strip {
+  min-height: 48px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background-color: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.bulk-placeholder {
+  font-size: 13px;
+  color: var(--text-secondary);
+  width: 100%;
+  text-align: center;
+}
+
+.bulk-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 14px;
+  padding: 0;
+}
+
+.checkbox-column {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
 .hosts-table {
   width: 100%;
   border-collapse: collapse;
@@ -249,6 +412,8 @@ onMounted(() => {
   padding: 8px 12px;
   font-size: 14px;
   border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
 }
 
 .hosts-table thead {
@@ -262,6 +427,8 @@ onMounted(() => {
 .action-buttons {
   display: flex;
   gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .loading-state,

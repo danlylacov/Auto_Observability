@@ -12,7 +12,12 @@
           <span v-if="loading" class="loading"></span>
           <span v-else>Reload</span>
         </button>
-        <button class="btn btn-primary" @click="saveConfig" :disabled="saving || !editorValue">
+        <button
+          v-if="canMutatePrometheusGrafanaConfig"
+          class="btn btn-primary"
+          @click="saveConfig"
+          :disabled="saving || !editorValue"
+        >
           <span v-if="saving" class="loading"></span>
           <span v-else>Save</span>
         </button>
@@ -48,6 +53,9 @@ import { lintKeymap } from '@codemirror/lint'
 import yamlLib from 'js-yaml'
 import { configApi, grafanaApi, prometheusApi } from '../services/api'
 import { showToast } from '../utils/toast'
+import { usePermissions } from '../composables/usePermissions'
+
+const { canMutatePrometheusGrafanaConfig } = usePermissions()
 
 const selectedConfig = ref('prometheus-signature')
 const editorValue = ref('')

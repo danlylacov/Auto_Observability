@@ -1,32 +1,29 @@
 <template>
   <div class="container-details">
-    <!-- Header Section -->
     <div class="details-header">
-      <button @click="$emit('back')" class="btn btn-secondary back-btn">← Back</button>
+      <button type="button" @click="$emit('back')" class="btn btn-secondary back-btn">Back</button>
       <div class="header-actions">
-        <button 
+        <button
           v-if="status === 'running'"
-          @click="handleStop" 
+          type="button"
+          @click="handleStop"
           class="btn btn-danger"
-          :disabled="loading"
+          :disabled="loading || pipelineLoading"
         >
           <span v-if="loading" class="loading"></span>
-          <span v-else>Stop Container</span>
+          <span v-else>Stop</span>
         </button>
-        <button 
+        <button
           v-else
-          @click="handleStart" 
+          type="button"
+          @click="handleStart"
           class="btn btn-success"
-          :disabled="loading"
+          :disabled="loading || pipelineLoading"
         >
           <span v-if="loading" class="loading"></span>
-          <span v-else>Start Container</span>
+          <span v-else>Start</span>
         </button>
-        <button 
-          @click="handleRemove" 
-          class="btn btn-danger"
-          :disabled="loading"
-        >
+        <button type="button" class="btn btn-danger" :disabled="loading || pipelineLoading" @click="handleRemove">
           Remove
         </button>
       </div>
@@ -34,187 +31,140 @@
 
     <div v-if="loading && !containerData" class="loading-state">
       <div class="loading"></div>
-      <p>Loading container details...</p>
+      <p>Loading…</p>
     </div>
 
     <div v-else-if="containerData" class="details-content">
-      <!-- Hero Card -->
-      <div class="card hero-card">
-        <div class="hero-header">
-          <div class="hero-title-section">
-            <h1 class="hero-title">{{ containerName }}</h1>
-            <span :class="['status-badge', statusBadgeClass]">
-              <span class="status-dot"></span>
-              {{ status }}
-            </span>
+      <section class="panel panel-main">
+        <div class="panel-main-row">
+          <div>
+            <h1 class="title">{{ containerName }}</h1>
+            <p class="muted mono">{{ containerId }}</p>
           </div>
-          <div class="hero-meta">
-            <div class="meta-item" v-if="stack">
-              <span class="meta-label">Stack</span>
-              <span class="meta-value badge badge-info">{{ stack }}</span>
-            </div>
-            <div class="meta-item" v-if="prometheusConfig">
-              <span class="meta-label">Prometheus</span>
-              <div class="prometheus-meta-values">
-                <span 
-                  :class="['badge', prometheusConfig.status === 'active' ? 'badge-success' : 'badge-warning']"
-                  :title="`Config status: ${prometheusConfig.status}`"
-                >
-                  {{ prometheusConfig.status === 'active' ? '✓ Config' : '⚠ Config' }}
-                </span>
-                <span 
-                  v-if="prometheusConfig.exporter.exists"
-                  :class="['badge', prometheusConfig.exporter.running ? 'badge-success' : 'badge-error']"
-                  :title="`Exporter ${prometheusConfig.exporter.running ? 'running' : 'stopped'}`"
-                >
-                  {{ prometheusConfig.exporter.running ? '✓ Exporter' : '✗ Exporter' }}
-                </span>
-                <span 
-                  v-else
-                  class="badge badge-secondary"
-                  title="Exporter not found"
-                >
-                  - Exporter
-                </span>
-              </div>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Container ID</span>
-              <span class="meta-value text-xs">{{ containerId }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="hero-info">
-          <div class="info-row">
-            <div class="info-cell">
-              <span class="info-icon">📦</span>
-              <div class="info-content">
-                <span class="info-label">Image</span>
-                <span class="info-value">{{ image }}</span>
-              </div>
-            </div>
-            <div class="info-cell" v-if="created">
-              <span class="info-icon">🕒</span>
-              <div class="info-content">
-                <span class="info-label">Created</span>
-                <span class="info-value">{{ created }}</span>
-              </div>
-            </div>
-            <div class="info-cell" v-if="startedAt">
-              <span class="info-icon">▶️</span>
-              <div class="info-content">
-                <span class="info-label">Started At</span>
-                <span class="info-value">{{ startedAt }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Main Content Grid -->
-      <div class="content-grid">
-        <!-- Network Settings -->
-        <div class="card section-card" v-if="networkInfo.length > 0">
-          <div class="card-header">
-            <h2 class="section-title">
-              <span class="section-icon">🌐</span>
-              Network Settings
-            </h2>
-          </div>
-          <div class="card-body">
-            <div class="network-grid">
-              <div v-for="(net, index) in networkInfo" :key="index" class="network-card">
-                <div class="network-card-header">
-                  <span class="network-name">{{ net.name }}</span>
-                  <span v-if="net.ip" class="network-ip">{{ net.ip }}</span>
-                </div>
-                <div class="network-details">
-                  <div class="network-detail-item" v-if="net.gateway">
-                    <span class="detail-label">Gateway</span>
-                    <span class="detail-value">{{ net.gateway }}</span>
-                  </div>
-                  <div class="network-detail-item" v-if="net.macAddress">
-                    <span class="detail-label">MAC Address</span>
-                    <span class="detail-value">{{ net.macAddress }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <span :class="['pill', statusBadgeClass]">{{ status }}</span>
         </div>
 
-        <!-- Ports -->
-        <div class="card section-card" v-if="portsList.length > 0">
-          <div class="card-header">
-            <h2 class="section-title">
-              <span class="section-icon">🔌</span>
-              Port Mappings
-            </h2>
+        <dl class="kv-grid">
+          <div v-if="stack" class="kv">
+            <dt>Stack</dt>
+            <dd><span class="badge badge-info">{{ stack }}</span></dd>
           </div>
-          <div class="card-body">
-            <div class="ports-grid">
-              <div v-for="(port, index) in portsList" :key="index" class="port-card">
-                <div class="port-main">
-                  <span class="port-number">{{ port.container }}</span>
-                  <span class="port-protocol">{{ port.protocol.toUpperCase() }}</span>
-                </div>
-                <div class="port-mapping" v-if="port.host">
-                  <span class="mapping-label">→</span>
-                  <span class="mapping-value">{{ port.host }}</span>
-                </div>
-                <div class="port-mapping" v-else>
-                  <span class="mapping-label">Not exposed</span>
-                </div>
-              </div>
-            </div>
+          <div v-if="prometheusConfig" class="kv kv-wide">
+            <dt>Prometheus</dt>
+            <dd class="inline-badges">
+              <span
+                :class="['badge', prometheusConfig.status === 'active' ? 'badge-success' : 'badge-warning']"
+                :title="`Config: ${prometheusConfig.status}`"
+              >
+                {{ prometheusConfig.status === 'active' ? 'Active' : 'Inactive' }}
+              </span>
+              <span
+                v-if="prometheusConfig.exporter.exists"
+                :class="['badge', prometheusConfig.exporter.running ? 'badge-success' : 'badge-error']"
+                :title="prometheusConfig.exporter.running ? 'Exporter running' : 'Exporter stopped'"
+              >
+                {{ prometheusConfig.exporter.running ? 'Exporter running' : 'Exporter stopped' }}
+              </span>
+              <span v-else class="badge badge-secondary" title="No exporter">Exporter missing</span>
+            </dd>
           </div>
-        </div>
+          <div class="kv">
+            <dt>Image</dt>
+            <dd class="mono wrap">{{ image }}</dd>
+          </div>
+          <div v-if="created" class="kv">
+            <dt>Created</dt>
+            <dd>{{ created }}</dd>
+          </div>
+          <div v-if="startedAt" class="kv">
+            <dt>Started</dt>
+            <dd>{{ startedAt }}</dd>
+          </div>
+        </dl>
+      </section>
 
-        <!-- Environment Variables -->
-        <div class="card section-card" v-if="envVars.length > 0">
-          <div class="card-header">
-            <h2 class="section-title">
-              <span class="section-icon">⚙️</span>
-              Environment Variables
-            </h2>
-            <span class="section-count">{{ envVars.length }}</span>
-          </div>
-          <div class="card-body">
-            <div class="env-container">
-              <div v-for="(env, index) in envVars" :key="index" class="env-row">
-                <span class="env-key">{{ getEnvKey(env) }}</span>
-                <span class="env-separator">=</span>
-                <span class="env-value">{{ getEnvValue(env) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="sections">
+        <section v-if="networkInfo.length > 0" class="panel">
+          <h2 class="section-heading">Networks</h2>
+          <ul class="list-plain">
+            <li v-for="(net, index) in networkInfo" :key="index" class="list-item">
+              <span class="strong">{{ net.name }}</span>
+              <span v-if="net.ip" class="mono muted">{{ net.ip }}</span>
+              <span v-if="net.gateway" class="muted">Gateway {{ net.gateway }}</span>
+              <span v-if="net.macAddress" class="mono muted">{{ net.macAddress }}</span>
+            </li>
+          </ul>
+        </section>
 
-        <!-- Labels -->
-        <div class="card section-card" v-if="labelsList.length > 0">
-          <div class="card-header">
-            <h2 class="section-title">
-              <span class="section-icon">🏷️</span>
-              Labels
-            </h2>
-            <span class="section-count">{{ labelsList.length }}</span>
-          </div>
-          <div class="card-body">
-            <div class="labels-container">
-              <div v-for="(label, index) in labelsList" :key="index" class="label-row">
-                <span class="label-key">{{ label.key }}</span>
-                <span class="label-separator">:</span>
-                <span class="label-value">{{ label.value }}</span>
-              </div>
+        <section v-if="portsList.length > 0" class="panel">
+          <h2 class="section-heading">Ports</h2>
+          <ul class="list-plain">
+            <li v-for="(port, index) in portsList" :key="index" class="list-item port-line">
+              <span class="mono">{{ port.container }}/{{ port.protocol }}</span>
+              <template v-if="port.host">
+                <span class="muted">host</span>
+                <span class="mono">{{ port.host }}</span>
+              </template>
+              <span v-else class="muted">Not exposed</span>
+            </li>
+          </ul>
+        </section>
+
+        <section v-if="envVars.length > 0" class="panel">
+          <h2 class="section-heading">Environment <span class="count">{{ envVars.length }}</span></h2>
+          <div class="scroll-block">
+            <div v-for="(env, index) in envVars" :key="index" class="mono-row">
+              <span class="accent">{{ getEnvKey(env) }}</span>
+              <span class="muted">=</span>
+              <span class="wrap">{{ getEnvValue(env) }}</span>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section v-if="labelsList.length > 0" class="panel">
+          <h2 class="section-heading">Labels <span class="count">{{ labelsList.length }}</span></h2>
+          <div class="scroll-block">
+            <div v-for="(label, index) in labelsList" :key="index" class="mono-row">
+              <span class="accent">{{ label.key }}</span>
+              <span class="muted">:</span>
+              <span class="wrap">{{ label.value }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-grafana">
+          <h2 class="section-heading">Grafana</h2>
+          <div v-if="!prometheusConfig" class="muted">Prometheus config is required before Grafana.</div>
+          <div v-else class="grafana-summary">
+            <p>
+              <span class="muted">Dashboard</span>
+              <span :class="['badge', prometheusConfig.has_grafana_dashboard ? 'badge-success' : 'badge-secondary']">
+                {{ prometheusConfig.has_grafana_dashboard ? 'Yes' : 'No' }}
+              </span>
+            </p>
+            <p v-if="!prometheusConfig.has_grafana_dashboard" class="muted small">
+              Use Start all to register the job in Prometheus and import a dashboard when metrics are ready.
+            </p>
+          </div>
+          <div class="actions-footer">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="pipelineLoading || startAllDisabled || !hostId"
+              :title="startAllDisabled ? 'Exporter, active config and dashboard are already set up' : ''"
+              @click="handleStartAll"
+            >
+              <span v-if="pipelineLoading" class="loading"></span>
+              <span v-else>Start all</span>
+            </button>
+          </div>
+        </section>
       </div>
     </div>
 
     <div v-else class="error-state">
       <p>Container not found</p>
-      <button @click="$emit('back')" class="btn btn-primary">Go Back</button>
+      <button type="button" @click="$emit('back')" class="btn btn-primary">Back</button>
     </div>
   </div>
 </template>
@@ -223,6 +173,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { containerApi, type ContainerData } from '../services/api'
 import { showToast } from '../utils/toast'
+import { runContainerStartAllPipeline } from '../utils/containerStartAllPipeline'
 
 const props = defineProps<{
   containerId: string
@@ -234,6 +185,7 @@ const emit = defineEmits<{
 
 const containerData = ref<ContainerData | null>(null)
 const loading = ref(false)
+const pipelineLoading = ref(false)
 const hostId = ref<string | null>(null)
 
 const containerName = computed(() => {
@@ -253,10 +205,6 @@ const stack = computed(() => {
     return containerData.value.classification.result[0][0]
   }
   return undefined
-})
-
-const hasPrometheusConfig = computed(() => {
-  return containerData.value?.has_prometheus_config === true
 })
 
 const prometheusConfig = computed(() => {
@@ -280,7 +228,7 @@ const startedAt = computed(() => {
 const networkInfo = computed(() => {
   const networks = containerData.value?.info.NetworkSettings?.Networks
   if (!networks) return []
-  
+
   return Object.entries(networks).map(([name, data]: [string, any]) => ({
     name,
     ip: data.IPAddress,
@@ -292,7 +240,7 @@ const networkInfo = computed(() => {
 const portsList = computed(() => {
   const ports = containerData.value?.info.NetworkSettings?.Ports
   if (!ports) return []
-  
+
   const result: any[] = []
   Object.entries(ports).forEach(([containerPort, hostPorts]: [string, any]) => {
     const [port, protocol] = containerPort.split('/')
@@ -326,8 +274,18 @@ const labelsList = computed(() => {
 })
 
 const statusBadgeClass = computed(() => {
-  if (status.value === 'running') return 'status-running'
-  return 'status-stopped'
+  if (status.value === 'running') return 'pill-running'
+  return 'pill-stopped'
+})
+
+const startAllDisabled = computed(() => {
+  const pc = containerData.value?.prometheus_config
+  if (!pc) return false
+  return (
+    pc.exporter?.running === true &&
+    pc.status === 'active' &&
+    pc.has_grafana_dashboard === true
+  )
 })
 
 const getEnvKey = (env: string): string => {
@@ -340,18 +298,79 @@ const getEnvValue = (env: string): string => {
   return idx > 0 ? env.substring(idx + 1) : ''
 }
 
-const loadContainer = async () => {
-  loading.value = true
+const loadContainer = async (opts?: { silent?: boolean }) => {
+  if (!opts?.silent) {
+    loading.value = true
+  }
   try {
     const containers = await containerApi.getContainers()
     containerData.value = containers[props.containerId] || null
     hostId.value = containerData.value?.host_id || null
   } catch (error: any) {
     console.error('Failed to load container:', error)
-    const errorMsg = error.response?.data?.detail || error.message || 'Failed to load container details'
+    if (!opts?.silent) {
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to load container details'
+      showToast(errorMsg, 'error')
+    }
+  } finally {
+    if (!opts?.silent) {
+      loading.value = false
+    }
+  }
+}
+
+const handleStartAll = async () => {
+  const h = hostId.value
+  const d = containerData.value
+  if (!h || !d) {
+    showToast('Host ID is not available', 'error')
+    return
+  }
+  const portInput = prompt('Exporter port (default: 9100):', '9100')
+  if (portInput === null) {
+    return
+  }
+  const trimmed = portInput.trim()
+  const exporterPort = trimmed === '' ? 9100 : parseInt(trimmed, 10)
+  if (Number.isNaN(exporterPort) || exporterPort < 1024 || exporterPort > 65535) {
+    showToast('Invalid port. Use 1024–65535.', 'error')
+    return
+  }
+  const name = d.info.Name?.replace(/^\//, '') || ''
+  if (!name) {
+    showToast('Container name is missing', 'error')
+    return
+  }
+
+  pipelineLoading.value = true
+  try {
+    const result = await runContainerStartAllPipeline({
+      containerId: props.containerId,
+      hostId: h,
+      exporterPort,
+      skipUpExporter: d.prometheus_config?.exporter?.running === true,
+      reload: loadContainer,
+      isExporterRunning: () =>
+        containerData.value?.prometheus_config?.exporter?.running === true,
+      isGrafanaMetricsReady: () =>
+        containerData.value?.prometheus_config?.grafana_metrics_ready === true,
+      instanceSuffix: name.replace(/[^a-zA-Z0-9_-]/g, '-')
+    })
+    if (result === 'timeout') {
+      showToast(
+        'Timed out waiting for Prometheus metrics. Check Prometheus and main config.',
+        'warning',
+        8000
+      )
+    } else {
+      showToast('Start all completed', 'success')
+    }
+  } catch (error: any) {
+    console.error('Start all failed:', error)
+    const errorMsg = error.response?.data?.detail || error.message || 'Start all failed'
     showToast(errorMsg, 'error')
   } finally {
-    loading.value = false
+    pipelineLoading.value = false
   }
 }
 
@@ -361,8 +380,7 @@ const handleStart = async () => {
     if (!hostId.value) {
       throw new Error('Host ID is not available for this container')
     }
-    const result = await containerApi.startContainer(props.containerId, hostId.value)
-    console.log('Start result:', result)
+    await containerApi.startContainer(props.containerId, hostId.value)
     await loadContainer()
   } catch (error: any) {
     console.error('Failed to start container:', error)
@@ -379,8 +397,7 @@ const handleStop = async () => {
     if (!hostId.value) {
       throw new Error('Host ID is not available for this container')
     }
-    const result = await containerApi.stopContainer(props.containerId, hostId.value)
-    console.log('Stop result:', result)
+    await containerApi.stopContainer(props.containerId, hostId.value)
     await loadContainer()
   } catch (error: any) {
     console.error('Failed to stop container:', error)
@@ -392,7 +409,7 @@ const handleStop = async () => {
 }
 
 const handleRemove = async () => {
-  if (!confirm('Are you sure you want to remove this container?')) {
+  if (!confirm('Remove this container?')) {
     return
   }
   loading.value = true
@@ -400,8 +417,7 @@ const handleRemove = async () => {
     if (!hostId.value) {
       throw new Error('Host ID is not available for this container')
     }
-    const result = await containerApi.removeContainer(props.containerId, hostId.value)
-    console.log('Remove result:', result)
+    await containerApi.removeContainer(props.containerId, hostId.value)
     emit('back')
   } catch (error: any) {
     console.error('Failed to remove container:', error)
@@ -419,15 +435,15 @@ onMounted(() => {
 
 <style scoped>
 .container-details {
-  padding: 24px 0;
+  padding: 16px 0 32px;
 }
 
 .details-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
-  gap: 16px;
+  margin-bottom: 20px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -437,117 +453,201 @@ onMounted(() => {
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .details-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
-/* Hero Card */
-.hero-card {
-  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+.panel {
   border: 1px solid var(--border);
-  padding: 32px;
+  border-radius: 6px;
+  padding: 16px 18px;
+  background: var(--bg-card);
 }
 
-.hero-header {
+.panel-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-main-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.hero-title-section {
-  display: flex;
-  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
 }
 
-.hero-title {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
+.title {
+  font-size: 1.25rem;
   font-weight: 600;
-  text-transform: capitalize;
+  margin: 0 0 6px;
+  line-height: 1.3;
 }
 
-.status-badge .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.status-running {
-  background-color: rgba(76, 175, 80, 0.15);
-  color: var(--success);
-  border: 1px solid var(--success);
-}
-
-.status-running .status-dot {
-  background-color: var(--success);
-}
-
-.status-stopped {
-  background-color: rgba(244, 67, 54, 0.15);
-  color: var(--error);
-  border: 1px solid var(--error);
-}
-
-.status-stopped .status-dot {
-  background-color: var(--error);
-}
-
-.hero-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: flex-end;
-}
-
-.meta-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.meta-label {
-  font-size: 11px;
+.muted {
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.meta-value {
   font-size: 13px;
-  color: var(--text-primary);
-  font-weight: 500;
 }
 
-.prometheus-meta-values {
+.mono {
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+  font-size: 13px;
+}
+
+.wrap {
+  word-break: break-word;
+}
+
+.pill {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: lowercase;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.pill-running {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.pill-stopped {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.kv {
+  margin: 0;
+}
+
+.kv-wide {
+  grid-column: 1 / -1;
+}
+
+.kv dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.kv dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+.inline-badges {
   display: flex;
-  gap: 6px;
   flex-wrap: wrap;
+  gap: 6px;
   align-items: center;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-heading {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.count {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.list-plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.port-line {
+  border-bottom: 1px solid var(--border-light, #404040);
+  padding-bottom: 8px;
+}
+
+.port-line:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.scroll-block {
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mono-row {
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.accent {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-secondary);
+}
+
+.error-state {
+  color: var(--error);
 }
 
 .badge-secondary {
@@ -561,354 +661,18 @@ onMounted(() => {
   color: white;
 }
 
-.hero-info {
-  padding-top: 24px;
-  border-top: 1px solid var(--border);
+.panel-grafana .grafana-summary p {
+  margin: 0 0 8px;
 }
 
-.info-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 24px;
-}
-
-.info-cell {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.info-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.info-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.info-content .info-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.info-content .info-value {
-  font-size: 14px;
-  color: var(--text-primary);
-  font-weight: 500;
-  word-break: break-word;
-}
-
-/* Content Grid */
-.content-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 24px;
-}
-
-.section-card {
-  padding: 0;
-  overflow: hidden;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
-  background-color: var(--bg-secondary);
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.section-icon {
-  font-size: 20px;
-}
-
-.section-count {
+.small {
   font-size: 12px;
-  color: var(--text-secondary);
-  background-color: var(--bg-primary);
-  padding: 4px 10px;
-  border-radius: 12px;
+  line-height: 1.4;
 }
 
-.card-body {
-  padding: 24px;
-}
-
-/* Network Grid */
-.network-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.network-card {
-  padding: 16px;
-  background-color: var(--bg-primary);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  transition: all 0.2s;
-}
-
-.network-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0, 188, 212, 0.1);
-}
-
-.network-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.network-name {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 15px;
-}
-
-.network-ip {
-  font-family: 'Courier New', monospace;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.network-details {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.network-detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-}
-
-.detail-label {
-  color: var(--text-secondary);
-}
-
-.detail-value {
-  color: var(--text-primary);
-  font-family: 'Courier New', monospace;
-  font-weight: 500;
-}
-
-/* Ports Grid */
-.ports-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-}
-
-.port-card {
-  padding: 16px;
-  background-color: var(--bg-primary);
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: all 0.2s;
-}
-
-.port-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0, 188, 212, 0.1);
-}
-
-.port-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.port-number {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: 'Courier New', monospace;
-}
-
-.port-protocol {
-  font-size: 11px;
-  color: var(--text-secondary);
-  background-color: var(--bg-secondary);
-  padding: 2px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-}
-
-.port-mapping {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.mapping-label {
-  color: var(--text-secondary);
-}
-
-.mapping-value {
-  color: var(--accent);
-  font-family: 'Courier New', monospace;
-  font-weight: 500;
-}
-
-/* Environment Variables */
-.env-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.env-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  background-color: var(--bg-primary);
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  font-size: 13px;
-  font-family: 'Courier New', monospace;
-  transition: all 0.2s;
-}
-
-.env-row:hover {
-  border-color: var(--accent);
-  background-color: var(--bg-secondary);
-}
-
-.env-key {
-  color: var(--accent);
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.env-separator {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.env-value {
-  color: var(--text-primary);
-  word-break: break-all;
-  flex: 1;
-}
-
-/* Labels */
-.labels-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.label-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  background-color: var(--bg-primary);
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  font-size: 13px;
-  transition: all 0.2s;
-}
-
-.label-row:hover {
-  border-color: var(--accent);
-  background-color: var(--bg-secondary);
-}
-
-.label-key {
-  color: var(--accent);
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.label-separator {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.label-value {
-  color: var(--text-primary);
-  word-break: break-all;
-  flex: 1;
-}
-
-/* Loading & Error States */
-.loading-state,
-.error-state {
-  text-align: center;
-  padding: 80px 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  color: var(--text-secondary);
-}
-
-.error-state {
-  color: var(--error);
-}
-
-.error-state p {
-  font-size: 18px;
-  margin: 0;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .hero-meta {
-    align-items: flex-start;
-  }
-
-  .meta-item {
-    align-items: flex-start;
-  }
-
-  .info-row {
-    grid-template-columns: 1fr;
-  }
-
-  .ports-grid {
-    grid-template-columns: 1fr;
-  }
+.actions-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 </style>

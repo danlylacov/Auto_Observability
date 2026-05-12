@@ -4,6 +4,7 @@ venv
 .gitignore
 api_agregator/celerybeat-schedule.db
 .env
+api_agregator/.env
 .cursor
 
 # Local development files

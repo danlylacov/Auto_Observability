@@ -17,7 +17,7 @@ from app.db.postgres.database import get_db as get_db_session_dep
 
 
 @pytest.fixture
-def client():
+def client(skip_jwt_auth):
     """Фикстура для тестового клиента FastAPI."""
     return TestClient(app)
 
