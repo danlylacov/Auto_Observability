@@ -4,6 +4,7 @@ postgresql:
   exporter_port: 9187
   metrics_path: "/metrics"
   exporter_image: "prometheuscommunity/postgres-exporter:latest"
+  grafana_dashboard_id: 9628
   env_vars:
     DATA_SOURCE_NAME: "postgresql://postgres:password@localhost:5432/postgres?sslmode=disable"
   env_template: "postgresql://{user}:{password}@{host}:{port}/{database}?sslmode=disable"
@@ -13,6 +14,7 @@ mongodb:
   exporter_port: 9216
   metrics_path: "/metrics"
   exporter_image: "percona/mongodb_exporter:0.39"
+  grafana_dashboard_id: 7353
   # Optional overrides for slower exporters / large scrapes — any stack can set these keys.
   scrape_timeout: 30s
   exporter_command:
@@ -25,6 +27,12 @@ mongodb:
     MONGODB_URI: "mongodb://localhost:27017"
   env_template: "mongodb://{user}:{password}@{host}:{port}/{database}"
 
-
-
-
+redis:
+  job_name_suffix: "_redis"
+  exporter_port: 9121
+  metrics_path: "/metrics"
+  exporter_image: "oliver006/redis_exporter:v1.66.0"
+  grafana_dashboard_id: 11835
+  env_vars:
+    REDIS_ADDR: "redis://localhost:6379"
+  env_template: "redis://{host}:{port}"

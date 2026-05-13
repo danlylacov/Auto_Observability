@@ -1,50 +1,32 @@
-# =============================================================================
-# JWT и первый вход (users_api + api_agregator)
-# -----------------------------------------------------------------------------
-# Общий секрет для подписи токенов (обязательно смените в проде):
-#   export JWT_SECRET="$(openssl rand -hex 32)"
-# или в файле .env в КОРНЕ репозитория (рядом с этим compose): JWT_SECRET=...
-# Compose подставляет ${JWT_SECRET} в users_api и api_agregator — значения
-# должны совпадать. Блок environment ниже перекрывает JWT_* из api_agregator/.env.
+# Секреты и учётные данные — только в корневом `.env` (см. `.env.example`).
+# Скопируйте: cp .env.example .env и задайте JWT_SECRET, пароли и PROMETHEUS_CONFIG_HOST_PATH.
+# Compose подставляет переменные из `.env` рядом с этим файлом.
 #
-# Первый пользователь maintainer (создаётся при старте users_api, если в БД
-# ещё нет роли maintainer):
-#   MAINTAINER_USERNAME   (по умолчанию maintainer)
-#   MAINTAINER_PASSWORD   (по умолчанию changeme)
-# Вход в веб-интерфейс: http://localhost:3000/login — эти же логин и пароль.
+# Исключение: сервис `docker_api` использует только `docker_api/.env` (без корневого .env).
 #
-# api_agregator: при желании скопируйте api_agregator/.env.example →
-# api_agregator/.env (доп. переменные). JWT для контейнеров задаётся в compose;
-# env_file для api_agregator опционален (required: false).
-# =============================================================================
+# Первый вход в UI: http://localhost:3000/login — MAINTAINER_USERNAME / MAINTAINER_PASSWORD из `.env`.
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: auto_observability_postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_observability
-    # ports:
-    #   - "5433:5432"  # Доступ только внутри Docker сети
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - app_network
 
-  # Redis
   redis:
     image: redis:7-alpine
     container_name: auto_observability_redis
-    # ports:
-    #   - "6379:6379"  # Доступ только внутри Docker сети
     volumes:
       - redis_data:/data
     healthcheck:
@@ -55,13 +37,12 @@ services:
     networks:
       - app_network
 
-  # MinIO
   minio:
     image: minio/minio:latest
     container_name: auto_observability_minio
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9002:9000"
       - "9003:9001"
@@ -76,25 +57,13 @@ services:
     networks:
       - app_network
 
-  # Users + JWT auth (логин /me /users; тот же JWT_SECRET, что у api_agregator)
   users_api:
     build:
       context: ./users_api
       dockerfile: Dockerfile
     container_name: auto_observability_users_api
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_observability
-      # Должен совпадать с JWT_SECRET у api_agregator (см. шапку файла).
-      JWT_SECRET: ${JWT_SECRET:-change-me-use-long-random-string}
-      JWT_ALGORITHM: HS256
-      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
-      # Учётка для первого входа в UI и для POST /api/v1/users (только maintainer).
-      MAINTAINER_USERNAME: ${MAINTAINER_USERNAME:-maintainer}
-      MAINTAINER_PASSWORD: ${MAINTAINER_PASSWORD:-changeme}
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,7 +77,6 @@ services:
     ports:
       - "${USERS_API_HOST_PORT:-8082}:8000"
 
-  # API Aggregator
   api_agregator:
     build:
       context: ./api_agregator
@@ -116,34 +84,9 @@ services:
       network: host
     container_name: auto_observability_api_agregator
     env_file:
-      - path: ./api_agregator/.env
-        required: false
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      # Переменные для подключения к PostgreSQL (если не указаны в .env)
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_observability
-      # Переменные для подключения к Redis
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-      # URLs для внешних сервисов (используем имена Docker сервисов)
-      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
-      DOCKER_API_URL: http://docker_api:8000
-      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
-      GRAFANA_MANAGER_URL: http://grafana_manager:8000
-      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
-      GRAFANA_GENERATION_URL: http://grafana_generation:8000
-      # Тот же секрет, что у users_api (иначе 401 на /api/v1/*).
-      JWT_SECRET: ${JWT_SECRET:-change-me-use-long-random-string}
-      JWT_ALGORITHM: HS256
-      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
     ports:
       - "8081:8000"
     depends_on:
@@ -167,7 +110,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Celery Worker 1
   api_agregator_celery_worker_1:
     build:
       context: ./api_agregator
@@ -175,27 +117,9 @@ services:
       network: host
     container_name: auto_observability_celery_worker_1
     env_file:
-      - path: ./api_agregator/.env
-        required: false
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_observability
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
-      DOCKER_API_URL: http://docker_api:8000
-      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
-      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
-      JWT_SECRET: ${JWT_SECRET:-change-me-use-long-random-string}
-      JWT_ALGORITHM: HS256
     command: celery -A app.celery_app worker --loglevel=info --hostname=worker1@%h
     depends_on:
       redis:
@@ -207,7 +131,6 @@ services:
     networks:
       - app_network
 
-  # Celery Worker 2
   api_agregator_celery_worker_2:
     build:
       context: ./api_agregator
@@ -215,27 +138,9 @@ services:
       network: host
     container_name: auto_observability_celery_worker_2
     env_file:
-      - path: ./api_agregator/.env
-        required: false
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_observability
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
-      DOCKER_API_URL: http://docker_api:8000
-      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
-      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
-      JWT_SECRET: ${JWT_SECRET:-change-me-use-long-random-string}
-      JWT_ALGORITHM: HS256
     command: celery -A app.celery_app worker --loglevel=info --hostname=worker2@%h
     depends_on:
       redis:
@@ -247,7 +152,6 @@ services:
     networks:
       - app_network
 
-  # Celery Beat
   api_agregator_celery_beat:
     build:
       context: ./api_agregator
@@ -255,27 +159,9 @@ services:
       network: host
     container_name: auto_observability_celery_beat
     env_file:
-      - path: ./api_agregator/.env
-        required: false
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_observability
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_DB: 0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-      PROMETHEUS_GENERATION_URL: http://prometheus_generation:8000
-      DOCKER_API_URL: http://docker_api:8000
-      PROMETHEUS_MANAGER_URL: http://prometheus_manager:8000
-      DOCKER_CLASSIFICATION_API_URL: http://docker_classification:8000
-      JWT_SECRET: ${JWT_SECRET:-change-me-use-long-random-string}
-      JWT_ALGORITHM: HS256
     command: celery -A app.celery_app beat --loglevel=info
     volumes:
       - ./api_agregator:/app
@@ -289,17 +175,12 @@ services:
     networks:
       - app_network
 
-  # Docker Classification
   docker_classification:
     build:
       context: ./docker_classification
       dockerfile: Dockerfile
       network: host
     container_name: auto_observability_docker_classification
-    env_file:
-      - ./docker_classification/.env
-    environment:
-      - SKIP_ENV_FILE_CHECK=true
     ports:
       - "8001:8000"
     networks:
@@ -310,13 +191,15 @@ services:
       timeout: 10s
       retries: 3
 
-  # Docker API
   docker_api:
     build:
       context: ./docker_api
       dockerfile: Dockerfile
       network: host
     container_name: auto_observability_docker_api
+    env_file:
+      - path: ./docker_api/.env
+        required: false
     ports:
       - "8004:8000"
     volumes:
@@ -329,7 +212,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Prometheus Generation
   prometheus_generation:
     build:
       context: ./prometheus_generation
@@ -337,13 +219,7 @@ services:
       network: host
     container_name: auto_observability_prometheus_generation
     env_file:
-      - ./prometheus_generation/.env
-    environment:
-      SKIP_ENV_FILE_CHECK: "true"
-      # MinIO настройки
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_USR: minioadmin
-      MINIO_PWD: minioadmin
+      - .env
     volumes:
       - ./signatures.yml:/app/signatures.yml
     ports:
@@ -359,7 +235,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Prometheus Manager
   prometheus_manager:
     build:
       context: ./prometheus_manager
@@ -367,15 +242,7 @@ services:
       network: host
     container_name: auto_observability_prometheus_manager
     env_file:
-      - ./prometheus_manager/.env
-    environment:
-      SKIP_ENV_FILE_CHECK: "true"
-      # MinIO настройки
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_USR: minioadmin
-      MINIO_PWD: minioadmin
-      # Путь к конфигурации Prometheus на хосте
-      PROMETHEUS_CONFIG_HOST_PATH: /home/daniil/Рабочий стол/диплом/Auto_Observability/prometheus_manager/app/services/prometheus
+      - .env
     ports:
       - "8003:8000"
     depends_on:
@@ -392,7 +259,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Grafana container start/stop (Docker on host / socket)
   grafana_manager:
     build:
       context: ./grafana_manager
@@ -411,24 +277,18 @@ services:
       timeout: 10s
       retries: 3
 
-  # Grafana dashboard generation + import API
   grafana_generation:
     build:
       context: ./grafana_generation
       dockerfile: Dockerfile
       network: host
     container_name: auto_observability_grafana_generation
-    environment:
-      # По умолчанию как в grafana_manager/grafana_settings.yml (Grafana на хосте :3052)
-      GRAFANA_URL: ${GRAFANA_URL:-http://host.docker.internal:3052}
-      GRAFANA_USER: ${GRAFANA_USER:-admin}
-      GRAFANA_PASSWORD: ${GRAFANA_PASSWORD:-Passw0rd}
-      DEFAULT_PROMETHEUS_DS_UID: ${DEFAULT_PROMETHEUS_DS_UID:-prometheus}
+    env_file:
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./grafana_generation/grafana_templates.yml:/app/grafana_templates.yml
-    # Порт только при отладке; api_agregator ходит на http://grafana_generation:8000 внутри сети.
+      - ./signatures.yml:/app/signatures.yml
     ports:
       - "${GRAFANA_GENERATION_HOST_PORT:-18010}:8000"
     networks:
@@ -439,17 +299,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # Frontend (пустой VITE_API_URL → запросы на тот же origin /api/* через nginx:
-  # /api/v1/auth и /api/v1/users → users_api, остальное → api_agregator)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       network: host
       args:
-        # Пустая строка: axios → относительные URL /api/* через nginx (auth → users_api).
         VITE_API_URL: ""
-        VITE_GRAFANA_EXTERNAL_URL: ${VITE_GRAFANA_EXTERNAL_URL:-http://localhost:3052}
+        VITE_GRAFANA_EXTERNAL_URL: ${VITE_GRAFANA_EXTERNAL_URL}
     container_name: auto_observability_frontend
     ports:
       - "3000:80"
@@ -469,4 +326,3 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
-

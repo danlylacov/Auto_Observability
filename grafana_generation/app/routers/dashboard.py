@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImportDashboardRequest(BaseModel):
-    template_key: str | None = Field(None, description="Ключ из grafana_templates.yml (postgresql, mongodb, ...)")
+    template_key: str | None = Field(None, description="Ключ стека из signatures.yml (postgresql, mongodb, …)")
     dashboard_id: int | None = Field(None, description="Прямой ID дашборда на grafana.com")
     prometheus_datasource_uid: str | None = Field(None, description="UID Prometheus datasource в Grafana")
     instance_suffix: str | None = Field(None, description="Суффикс UID/заголовка; по умолчанию случайный")
@@ -42,7 +42,7 @@ async def get_templates_yml():
     except FileNotFoundError:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            detail="grafana_templates.yml not found",
+            detail="signatures.yml not found (unified observability config)",
         )
 
 

@@ -10,6 +10,29 @@ import requests
 import yaml
 
 
+def resolve_observability_signatures_path(explicit: str | None = None) -> str:
+    """
+    Единый YAML сервисов (Prometheus exporter + Grafana dashboard id) в корне репозитория
+    или /app/signatures.yml в Docker.
+    """
+    if explicit:
+        return explicit
+    env = (os.getenv("SIGNATURES_PATH") or os.getenv("OBSERVABILITY_SIGNATURES_PATH") or "").strip()
+    if env:
+        return env
+    if os.path.exists("/app/signatures.yml"):
+        return "/app/signatures.yml"
+    service_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    workspace_root = os.path.dirname(service_root)
+    for candidate in (
+        os.path.join(workspace_root, "signatures.yml"),
+        os.path.join(service_root, "signatures.yml"),
+    ):
+        if os.path.exists(candidate):
+            return candidate
+    return os.path.join(workspace_root, "signatures.yml")
+
+
 class GrafanaTemplateLoader:
     """Загрузка дашбордов с grafana.com и подготовка под локальный источник Prometheus."""
 
@@ -18,22 +41,33 @@ class GrafanaTemplateLoader:
     def __init__(self, cache_dir: str = "./.dashboard_cache", templates_path: str | None = None):
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
-        if templates_path is None:
-            if os.path.exists("/app/grafana_templates.yml"):
-                templates_path = "/app/grafana_templates.yml"
-            else:
-                root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                templates_path = os.path.join(root, "grafana_templates.yml")
-        self.templates_path = templates_path
+        self.templates_path = resolve_observability_signatures_path(templates_path)
 
     def load_templates_index(self) -> dict[str, Any]:
-        """Каталог ключ → { dashboard_id, … } из grafana_templates.yml."""
+        """
+        Индекс шаблонов: ключ стека → { dashboard_id } из корневого signatures.yml
+        (поля grafana_dashboard_id или устаревший dashboard_id на сервисе).
+        """
         try:
             with open(self.templates_path, encoding="utf-8") as f:
-                idx = yaml.safe_load(f)
-            return idx or {}
+                raw = yaml.safe_load(f) or {}
         except FileNotFoundError:
             return {}
+
+        idx: dict[str, Any] = {}
+        for key, val in raw.items():
+            if not isinstance(val, dict):
+                continue
+            gid = val.get("grafana_dashboard_id")
+            if gid is None:
+                gid = val.get("dashboard_id")
+            if gid is None:
+                continue
+            try:
+                idx[str(key)] = {"dashboard_id": int(gid)}
+            except (TypeError, ValueError):
+                continue
+        return idx
 
     def fetch_dashboard_json(self, dashboard_id: int, revision: int | None = None) -> dict[str, Any]:
         """

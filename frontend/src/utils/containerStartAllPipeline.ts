@@ -76,6 +76,11 @@ export async function waitForGrafanaMetricsReady(
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
+    try {
+      await containerApi.updateContainers()
+    } catch {
+      /* still try reload */
+    }
     await reload({ silent: true })
     if (isReady()) {
       return true
@@ -119,7 +124,6 @@ export async function runContainerStartAllPipeline(params: {
   reload: ReloadFn
   isExporterRunning: () => boolean
   isGrafanaMetricsReady: () => boolean
-  instanceSuffix: string
 }): Promise<'ok' | 'timeout'> {
   const {
     containerId,
@@ -128,8 +132,7 @@ export async function runContainerStartAllPipeline(params: {
     skipUpExporter,
     reload,
     isExporterRunning,
-    isGrafanaMetricsReady,
-    instanceSuffix
+    isGrafanaMetricsReady
   } = params
 
   if (!skipUpExporter) {
@@ -158,6 +161,7 @@ export async function runContainerStartAllPipeline(params: {
   await tryAddServiceToMainConfig(cfg)
   await prometheusApi.updateManagerConfig()
   await restartPrometheusManager()
+  await new Promise((r) => setTimeout(r, 2500))
   await reload()
 
   const ready = await waitForGrafanaMetricsReady(reload, isGrafanaMetricsReady)
@@ -166,8 +170,8 @@ export async function runContainerStartAllPipeline(params: {
   }
 
   await grafanaApi.importDashboard({
+    prometheus_config_id: cfg.config_id,
     prometheus_datasource_uid: 'prometheus',
-    instance_suffix: instanceSuffix,
     overwrite: true
   })
   await reload()

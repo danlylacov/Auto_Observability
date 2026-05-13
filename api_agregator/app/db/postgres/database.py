@@ -14,11 +14,11 @@ _env_dev = _api_root / '.env.dev'
 _env_file = _api_root / '.env'
 
 if _env_dev.exists():
-    load_dotenv(_env_dev, override=True)  # override=True перезаписывает существующие переменные
+    load_dotenv(_env_dev, override=True)  # локально .env.dev перекрывает окружение
 elif _env_file.exists():
-    load_dotenv(_env_file, override=True)
+    load_dotenv(_env_file, override=False)  # в Docker не перетирать переменные из compose env_file
 else:
-    load_dotenv(override=True)
+    load_dotenv(override=False)
 
 if not os.getenv("DATABASE_URL"):
     postgres_host = os.getenv("POSTGRES_HOST", "postgres")
