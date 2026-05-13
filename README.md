@@ -220,7 +220,7 @@ Auto Observability — это платформа для автоматическ
 
 Скачивание шаблонов дашбордов с **grafana.com**, подстановка datasource Prometheus и импорт в вашу Grafana. Использует тот же `signatures.yml`, что и Prometheus Generation (в Compose монтируется в `/app/signatures.yml`).
 
-Переменные окружения: `GRAFANA_URL`, `GRAFANA_USER`, `GRAFANA_PASSWORD`, `DEFAULT_PROMETHEUS_DS_UID` (см. `docker-compose.yml`; по умолчанию ожидается Grafana на хосте, например `http://host.docker.internal:3052`).
+Переменные окружения: `GRAFANA_URL`, `GRAFANA_USER`, `GRAFANA_PASSWORD`, `DEFAULT_PROMETHEUS_DS_UID` (в Docker задаются в **корневом** `.env`, см. `.env.example`).
 
 **Роутеры** (префикс `/api/v1/grafana`):
 - `GET /templates` — индекс шаблонов из `signatures.yml`
@@ -269,6 +269,7 @@ Auto Observability — это платформа для автоматическ
 ```
 Auto_Observability/
 ├── signatures.yml                    # Единый YAML стеков: экспортеры Prometheus + grafana_dashboard_id
+├── .env.example                      # Шаблон переменных для Docker Compose (скопировать в `.env`)
 ├── docker-compose.yml                # Полный стек: БД, Redis, MinIO, все микросервисы, frontend
 ├── run-dev.sh                        # Частичный локальный запуск (см. комментарий ниже)
 ├── users_api/                        # JWT и пользователи (PostgreSQL)
@@ -288,7 +289,7 @@ Auto_Observability/
 
 Создайте файлы `.env.dev` в каждом сервисе для локальной разработки:
 
-**api_agregator/.env.dev** (добавьте переменные, совпадающие с `api_agregator/.env.example`; для Docker Compose см. также корневой `.env` / переменные в `docker-compose.yml`):
+**api_agregator/.env.dev** (добавьте переменные, совпадающие с `api_agregator/.env.example`; для Docker Compose используйте корневой `.env` по шаблону `.env.example`):
 
 ```env
 POSTGRES_HOST=localhost
@@ -322,9 +323,7 @@ VITE_API_URL=http://localhost:8081
 VITE_USERS_API_URL=http://localhost:8082
 ```
 
-Создайте `.env.dev` / `.env` по примерам в `users_api/.env.example`, `grafana_generation` (при локальном запуске), `docker_api`, и т.д. Для первого входа в UI при работе через Compose задайте `JWT_SECRET` в корне рядом с `docker-compose.yml` и учётку maintainer (`MAINTAINER_USERNAME` / `MAINTAINER_PASSWORD`).
-
-Аналогично настройте остальные сервисы (`prometheus_generation`, `prometheus_manager`, `docker_classification`, `docker_api`).
+Создайте `.env.dev` / локальные `.env` по примерам в каталогах сервисов. Для **Docker Compose** скопируйте в корень репозитория: `cp .env.example .env`, задайте `JWT_SECRET`, пароли и абсолютный путь `PROMETHEUS_CONFIG_HOST_PATH` на машине с Docker. Сервис **docker_api** по-прежнему может использовать только `docker_api/.env` (опционально).
 
 ### Установка зависимостей
 
@@ -371,7 +370,7 @@ python -m app.db.postgres.init_db
 ./run-dev.sh stop
 ```
 
-**Запуск через Docker Compose** (полный стек; задайте в корне репозитория файл `.env` с `JWT_SECRET` или экспортируйте переменную — см. комментарий в `docker-compose.yml`):
+**Запуск через Docker Compose** (полный стек): скопируйте `cp .env.example .env` в корне репозитория, отредактируйте секреты и `PROMETHEUS_CONFIG_HOST_PATH`, затем:
 
 ```bash
 docker compose up -d
@@ -503,19 +502,19 @@ npm run dev
 
 ### Файл signatures.yml
 
-Файл `signatures.yml` находится в корне проекта и описывает для каждого стека параметры экспортера Prometheus и при необходимости идентификатор дашборда на grafana.com (`grafana_dashboard_id`). При запуске через Docker Compose файл монтируется в контейнеры `prometheus_generation` и `grafana_generation` как `/app/signatures.yml`.
+Файл `signatures.yml` находится в корне проекта и описывает для каждого стека параметры экспортера Prometheus и при необходимости идентификатор дашборда на grafana.com (`grafana_dashboard_id`). При запуске через Docker Compose файл монтируется в контейнеры `prometheus_generation` и `grafana_generation` как `/app/signatures.yml`. В репозитории по умолчанию заданы стеки **postgresql**, **mongodb** и **redis** (ключ стека должен совпадать с результатом классификации в `docker_classification`).
 
 **Структура конфигурации**:
 ```yaml
-mongodb:
-  job_name_suffix: "_mongodb"
-  exporter_port: 9216
+redis:
+  job_name_suffix: "_redis"
+  exporter_port: 9121
   metrics_path: "/metrics"
-  exporter_image: "percona/mongodb_exporter:0.39"
-  grafana_dashboard_id: 7353
+  exporter_image: "oliver006/redis_exporter:v1.66.0"
+  grafana_dashboard_id: 11835
   env_vars:
-    MONGODB_URI: "mongodb://localhost:27017"
-  env_template: "mongodb://{user}:{password}@{host}:{port}/{database}"
+    REDIS_ADDR: "redis://localhost:6379"
+  env_template: "redis://{host}:{port}"
 ```
 
 **Важно**: При локальной разработке файл должен находиться в корне проекта. При запуске через Docker Compose файл монтируется автоматически.

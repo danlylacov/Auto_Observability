@@ -11,3 +11,14 @@ api_agregator/.env
 .dev-pids
 .dev-logs/
 **/.env.dev
+
+# Python / tests (generated)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.test-reports/
+.mypy_cache/
+.ruff_cache/
