@@ -427,7 +427,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./grafana_generation/grafana_templates.yml:/app/grafana_templates.yml
+      - ./signatures.yml:/app/signatures.yml
     # Порт только при отладке; api_agregator ходит на http://grafana_generation:8000 внутри сети.
     ports:
       - "${GRAFANA_GENERATION_HOST_PORT:-18010}:8000"

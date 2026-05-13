@@ -9,6 +9,7 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 from app import main as main_module  # type: ignore[import]
+from app.services.templste_loader import GrafanaTemplateLoader  # type: ignore[import]
 
 
 def test_root_and_health():
@@ -31,6 +32,14 @@ def test_templates_yml_get():
     assert "content" in body
     assert isinstance(body["content"], str)
     assert len(body["content"]) > 0
+    assert "grafana_dashboard_id" in body["content"]
+
+
+def test_load_templates_index_from_unified_signatures():
+    loader = GrafanaTemplateLoader()
+    idx = loader.load_templates_index()
+    assert idx.get("postgresql") == {"dashboard_id": 9628}
+    assert idx.get("mongodb") == {"dashboard_id": 7353}
 
 
 def test_templates_yml_put_invalid_yaml():

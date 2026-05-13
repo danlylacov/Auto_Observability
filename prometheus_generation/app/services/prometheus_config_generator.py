@@ -231,6 +231,8 @@ class PrometheusConfigGenerator:
             return None
 
         exporter_config = dict(self.exporter_configs[stack_key])
+        for _k in ("grafana_dashboard_id", "dashboard_id"):
+            exporter_config.pop(_k, None)
         scrape_override = container_data.get("prometheus_scrape_port")
         if scrape_override is not None:
             exporter_config["prometheus_scrape_port"] = int(scrape_override)

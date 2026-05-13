@@ -474,25 +474,6 @@ export const grafanaApi = {
   async restartManager(): Promise<any> {
     const response = await api.post('/api/v1/grafana/manager/restart')
     return response.data
-  },
-
-  async getTemplatesYml(): Promise<string> {
-    const response = await api.get('/api/v1/grafana/templates_yml')
-    const d = response.data
-    if (typeof d === 'string') {
-      return d
-    }
-    if (d && typeof d === 'object' && typeof (d as { content?: string }).content === 'string') {
-      return (d as { content: string }).content
-    }
-    return ''
-  },
-
-  async putTemplatesYml(content: string): Promise<any> {
-    const response = await api.put('/api/v1/grafana/templates_yml', content, {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    })
-    return response.data
   }
 }
 

@@ -67,7 +67,7 @@ def _main_config_jobs() -> set[str]:
 
 def _pick_template_key(stack: str, user_template: Optional[str], available: set[str]) -> Optional[str]:
     """
-    Выбор ключа шаблона из grafana_templates.yml по stack и опционально user_template
+    Выбор ключа шаблона из корневого signatures.yml (поле grafana_dashboard_id / stack) и опционально user_template
     (эвристика как во фронте resolveTemplateForContainer).
     """
     if not available:
@@ -122,7 +122,7 @@ class ImportDashboardBody(BaseModel):
 
 @router.get("/templates")
 async def grafana_templates() -> dict[str, Any]:
-    """Список шаблонов из grafana_templates.yml."""
+    """Список шаблонов (stack → dashboard_id), производный из signatures.yml."""
     gw = _generation_gateway()
     return gw.make_request("GET", "/api/v1/grafana/templates", timeout=30.0)
 
@@ -138,7 +138,7 @@ def _generation_base_url() -> str:
 
 @router.get("/templates_yml")
 async def get_grafana_templates_yml() -> dict[str, str]:
-    """Сырое содержимое grafana_templates.yml (через grafana_generation)."""
+    """Сырое содержимое единого signatures.yml (через grafana_generation)."""
     url = f"{_generation_base_url()}/api/v1/grafana/templates_yml"
     try:
         r = requests.get(url, timeout=60)
@@ -156,7 +156,7 @@ async def get_grafana_templates_yml() -> dict[str, str]:
 
 @router.put("/templates_yml", status_code=status.HTTP_200_OK)
 async def put_grafana_templates_yml(content: str = Body(..., media_type="text/plain")) -> dict[str, Any]:
-    """Сохранить grafana_templates.yml (валидация YAML на стороне generation)."""
+    """Сохранить signatures.yml (валидация YAML на стороне generation)."""
     url = f"{_generation_base_url()}/api/v1/grafana/templates_yml"
     try:
         r = requests.put(
