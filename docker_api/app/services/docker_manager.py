@@ -61,6 +61,27 @@ class DockerManager:
         except docker.errors.NotFound:
             return "Ошибка: Контейнер не найден."
 
+    @staticmethod
+    def _container_image_matches_request(container, image_name: str) -> bool:
+        want = (image_name or "").strip()
+        if not want:
+            return True
+        cfg_img = (container.attrs.get("Config") or {}).get("Image") or ""
+        if cfg_img == want:
+            return True
+        tags: List[str] = []
+        try:
+            tags = list(container.image.tags or [])
+        except Exception:
+            pass
+        if want in tags:
+            return True
+        want_suffix = want.split("/")[-1]
+        for t in tags:
+            if t.endswith("/" + want) or t == want or t.endswith(want_suffix):
+                return True
+        return False
+
     def pull_and_run_container(
             self,
             image_name: str,
@@ -71,7 +92,8 @@ class DockerManager:
             volumes: Optional[Dict[str, Dict[str, str]]] = None,
             environment: Optional[Dict[str, str]] = None,
             network: Optional[str] = None,
-            network_mode: Optional[str] = None
+            network_mode: Optional[str] = None,
+            entrypoint: Optional[Union[str, List[str]]] = None,
     ) -> dict:
         """
         Загружает образ и запускает контейнер.
@@ -100,21 +122,37 @@ class DockerManager:
 
             if name:
                 try:
-                    container = self.client.containers.get(name)
-                    if container.status == "running":
+                    existing = self.client.containers.get(name)
+                    if not self._container_image_matches_request(existing, image_name):
+                        logger.info(
+                            "Replacing container %s: requested image %s, existing tags %s",
+                            name,
+                            image_name,
+                            getattr(existing.image, "tags", None),
+                        )
+                        try:
+                            existing.remove(force=True)
+                        except Exception as re:
+                            return {
+                                "error": (
+                                    f"Не удалось удалить контейнер {name} "
+                                    f"с другим образом перед пересозданием: {re}"
+                                )
+                            }
+                    elif existing.status == "running":
                         container_id = (
-                            container.short_id if hasattr(container, 'short_id')
-                            else str(container.id)[:12]
+                            existing.short_id if hasattr(existing, 'short_id')
+                            else str(existing.id)[:12]
                         )
                         return {
                             "status": "Контейнер уже запущен",
                             "container_id": container_id
                         }
                     else:
-                        container.start()
+                        existing.start()
                         container_id = (
-                            container.short_id if hasattr(container, 'short_id')
-                            else str(container.id)[:12]
+                            existing.short_id if hasattr(existing, 'short_id')
+                            else str(existing.id)[:12]
                         )
                         return {
                             "status": "Контейнер перезапущен",
@@ -131,6 +169,8 @@ class DockerManager:
                 "detach": detach
             }
 
+            if entrypoint is not None:
+                run_kwargs["entrypoint"] = entrypoint
             if command is not None:
                 run_kwargs["command"] = command
             if name is not None:
@@ -146,11 +186,21 @@ class DockerManager:
             if network is not None and network_mode is None:
                 run_kwargs["network"] = network
 
-            container = self.client.containers.run(**run_kwargs)
+            new_container = self.client.containers.run(**run_kwargs)
+
+            new_container.reload()
+            if new_container.status != "running":
+                exit_code = (new_container.attrs.get("State") or {}).get("ExitCode")
+                return {
+                    "error": (
+                        "Контейнер завершился сразу после старта "
+                        f"(status={new_container.status}, exit_code={exit_code})"
+                    ),
+                }
 
             container_id = (
-                container.short_id if hasattr(container, 'short_id')
-                else str(container.id)[:12]
+                new_container.short_id if hasattr(new_container, 'short_id')
+                else str(new_container.id)[:12]
             )
             return {'container_id': container_id, 'pull_status': pull_status}
 

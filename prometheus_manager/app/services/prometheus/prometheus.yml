@@ -7,9 +7,27 @@ scrape_configs:
   file_sd_configs:
   - files:
     - targets/my-mongo_mongodb.yml
-- job_name: my-postgres_postgres
+- job_name: kafka-stack-demo_kafka
   scrape_interval: 15s
   scrape_timeout: 10s
   file_sd_configs:
   - files:
-    - targets/my-postgres_postgres.yml
+    - targets/kafka-stack-demo_kafka.yml
+- job_name: mariadb-stack-demo_mariadb
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  file_sd_configs:
+  - files:
+    - targets/mariadb-stack-demo_mariadb.yml
+- job_name: rabbitmq-stack-demo_rabbitmq
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  file_sd_configs:
+  - files:
+    - targets/rabbitmq-stack-demo_rabbitmq.yml
+- job_name: nats-stack-demo_nats
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  file_sd_configs:
+  - files:
+    - targets/nats-stack-demo_nats.yml

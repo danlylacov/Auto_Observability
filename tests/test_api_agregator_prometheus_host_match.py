@@ -13,6 +13,31 @@ _spec.loader.exec_module(_pr)
 find_exporter_container_data = _pr.find_exporter_container_data
 host_port_from_redis_inspect = _pr.host_port_from_redis_inspect
 redis_host_key_for_api_host_id = _pr.redis_host_key_for_api_host_id
+resolve_scrape_host_port_for_workload = _pr.resolve_scrape_host_port_for_workload
+
+
+def test_resolve_scrape_prefers_live_docker_port_over_stale_db():
+    """DB scrape_host_port can be stale after re-run exporter; Docker publish is source of truth."""
+    all_c = {
+        "exp": {
+            "info": {
+                "Name": "/nats-stack-demo-exporter",
+                "NetworkSettings": {
+                    "Ports": {"7777/tcp": [{"HostIp": "0.0.0.0", "HostPort": "7777"}]},
+                },
+            },
+            "host_id": "h1",
+            "host_name": "localhost",
+        }
+    }
+    hp = resolve_scrape_host_port_for_workload(
+        config_info={"scrape_host_port": 9113},
+        exporter_internal_port=7777,
+        workload_container_name="nats-stack-demo",
+        redis_host_key="h1",
+        all_containers=all_c,
+    )
+    assert hp == 7777
 
 
 def test_redis_host_key_prefers_host_id_over_display_name():

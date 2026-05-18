@@ -41,6 +41,7 @@ class FullContainer(BaseModel):
     """
 
     image_name: str = Field(None, max_length=500)
+    entrypoint: Optional[Union[str, List[str]]] = None
     command: Optional[Union[str, List[str]]] = None
     name: Optional[str] = Field(None, max_length=500)
     detach: bool = Field(True)

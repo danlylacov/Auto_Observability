@@ -53,6 +53,30 @@ def test_hosts_service_get_all_and_get_by_id(monkeypatch):
     assert same.name == "host1"
 
 
+def test_resolve_host_for_container_prefers_host_id(monkeypatch):
+    fake_host = SimpleNamespace(id="uuid-h1", name="My Docker", host="127.0.0.1", port=8004)
+    db = DummyDBSession([fake_host])
+    service = HostsService(db=db)
+
+    dto = service.resolve_host_for_container(
+        "localhost",
+        {"host_id": "uuid-h1", "host_name": "My Docker"},
+    )
+    assert dto is not None
+    assert dto.id == "uuid-h1"
+
+
+def test_resolve_host_for_container_docker_api_env_fallback(monkeypatch):
+    db = DummyDBSession([])
+    service = HostsService(db=db)
+    monkeypatch.setenv("DOCKER_API_URL", "http://docker_api:8000")
+
+    dto = service.resolve_host_for_container("localhost", None)
+    assert dto is not None
+    assert dto.host == "docker_api"
+    assert dto.port == 8000
+
+
 def test_hosts_service_resolve_host_for_docker(monkeypatch):
     fake_host = SimpleNamespace(id="h1", name="host1", host="localhost", port=8000)
     db = DummyDBSession([fake_host])

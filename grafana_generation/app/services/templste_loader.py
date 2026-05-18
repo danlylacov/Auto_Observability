@@ -124,6 +124,9 @@ class GrafanaTemplateLoader:
                 if s in ("${DS_PROMETHEUS}", "$DS_PROMETHEUS"):
                     # Grafana.com input placeholder becomes unresolved after removing __inputs.
                     return {"type": "prometheus", "uid": ds_uid}
+                # e.g. NATS dashboard 2279 uses ${DS_NATS-PROMETHEUS}; map any DS_* input to our Prometheus.
+                if s.startswith("${DS_") and s.endswith("}"):
+                    return {"type": "prometheus", "uid": ds_uid}
                 if s.startswith("$") or s.startswith("${"):
                     return ref  # Grafana template variable (${datasource})
                 if ref.strip().lower() in mixed_aliases:
@@ -132,6 +135,17 @@ class GrafanaTemplateLoader:
             if isinstance(ref, dict):
                 if ((ref.get("type") or "").lower() == "mixed") or ref.get("uid") == "__mixed__":
                     return ref
+                tlow = (ref.get("type") or "").lower()
+                uid_raw = ref.get("uid")
+                uid_str = str(uid_raw) if uid_raw is not None else ""
+                # Built-in Grafana datasource (e.g. RabbitMQ 12080) — do not force Prometheus.
+                if tlow == "grafana" or (tlow == "datasource" and uid_str.lower() == "grafana"):
+                    return ref
+                if isinstance(uid_raw, str) and uid_raw.startswith("${DS_") and uid_raw.endswith("}"):
+                    new_ref = dict(ref)
+                    new_ref["type"] = "prometheus"
+                    new_ref["uid"] = ds_uid
+                    return new_ref
                 new_ref = dict(ref)
                 new_ref["type"] = "prometheus"
                 new_ref["uid"] = ds_uid
@@ -269,6 +283,33 @@ class GrafanaTemplateLoader:
 
         walk(dash)
 
+    @staticmethod
+    def patch_kafka_7589_templating(dash: dict[str, Any]) -> None:
+        """
+        Dashboard 7589 uses kafka_consumergroup_current_offset for the job variable; without
+        consumer groups that series is absent, variables stay empty and every panel shows No data.
+        Prefer kafka_broker_info (always present when the exporter runs).
+        """
+        templating = (dash.get("templating") or {}).get("list")
+        if not isinstance(templating, list):
+            return
+        for var in templating:
+            if not isinstance(var, dict):
+                continue
+            name = var.get("name")
+            if name == "job":
+                var["query"] = "label_values(kafka_broker_info, job)"
+                var["refresh"] = 1
+            elif name == "instance":
+                var["query"] = 'label_values(kafka_broker_info{job=~"$job"}, instance)'
+                var["refresh"] = 1
+            elif name == "topic":
+                var["query"] = (
+                    'label_values(kafka_topic_partition_current_offset{instance=~"$instance",'
+                    "topic!='__consumer_offsets',topic!='--kafka'}, topic)"
+                )
+                var["refresh"] = 1
+
     def prepare_for_import(
         self,
         dashboard: dict[str, Any],
@@ -301,6 +342,8 @@ class GrafanaTemplateLoader:
             self.patch_mongodb_7353_compatible_metrics(dash)
         if source_dashboard_id == 9628:
             self.patch_postgresql_9628(dash)
+        if source_dashboard_id == 7589:
+            self.patch_kafka_7589_templating(dash)
 
         # Удалить возможные временные ключи Grafana.com
         if "meta" in dash:

@@ -502,7 +502,9 @@ npm run dev
 
 ### Файл signatures.yml
 
-Файл `signatures.yml` находится в корне проекта и описывает для каждого стека параметры экспортера Prometheus и при необходимости идентификатор дашборда на grafana.com (`grafana_dashboard_id`). При запуске через Docker Compose файл монтируется в контейнеры `prometheus_generation` и `grafana_generation` как `/app/signatures.yml`. В репозитории по умолчанию заданы стеки **postgresql**, **mongodb** и **redis** (ключ стека должен совпадать с результатом классификации в `docker_classification`).
+Файл `signatures.yml` находится в корне проекта и описывает для каждого стека параметры экспортера Prometheus и при необходимости идентификатор дашборда на grafana.com (`grafana_dashboard_id`). При запуске через Docker Compose файл монтируется в контейнеры `prometheus_generation` и `grafana_generation` как `/app/signatures.yml`. Ключ стека должен совпадать с результатом классификации в `docker_classification`. В репозитории заданы, в частности: **postgresql**, **mongodb**, **redis**, **mysql**, **mariadb**, **rabbitmq**, **elasticsearch**, **opensearch**, **clickhouse**, **influxdb**, **kafka**, **nats**.
+
+Для локальной проверки классификации и портов можно поднять одноимённые демо-контейнеры: [`scripts/run_demo_observability_targets.sh`](scripts/run_demo_observability_targets.sh) (порты на хосте смещены, см. комментарии в скрипте).
 
 **Структура конфигурации**:
 ```yaml
@@ -516,6 +518,8 @@ redis:
     REDIS_ADDR: "redis://localhost:6379"
   env_template: "redis://{host}:{port}"
 ```
+
+**InfluxDB**: sidecar-экспортер в конфиге использует образ **Telegraf** с минимальным inline-конфигом (`inputs.influxdb` → `outputs.prometheus_client`), т.к. образ `prom/influxdb-exporter` принимает line protocol, а не опрашивает сервер InfluxDB 1.x.
 
 **Важно**: При локальной разработке файл должен находиться в корне проекта. При запуске через Docker Compose файл монтируется автоматически.
 

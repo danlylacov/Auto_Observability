@@ -939,7 +939,10 @@ const handleStartExporter = async (id: string) => {
 
   actionLoading.value = id
   try {
-    await containerApi.upExporter(id, exporterPort)
+    const result = await containerApi.upExporter(id, exporterPort)
+    if (result?.error) {
+      throw new Error(result.error)
+    }
     showToast('Exporter started successfully', 'success')
     await containerApi.updateContainers()
     await loadContainers()
@@ -1311,11 +1314,16 @@ const handleBulkStartExporter = async () => {
 
   for (const id of selectedContainers.value) {
     try {
-      await containerApi.upExporter(id, exporterPort)
+      const result = await containerApi.upExporter(id, exporterPort)
+      if (result?.error) {
+        throw new Error(result.error)
+      }
       results.success++
     } catch (error: any) {
       results.failed++
-      results.errors.push(`${id}: ${error.response?.data?.detail || error.message || 'Failed'}`)
+      const detail = error.response?.data?.detail
+      const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg || d).join(', ') : error.message || 'Failed'
+      results.errors.push(`${id}: ${msg}`)
     }
   }
 

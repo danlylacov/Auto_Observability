@@ -1,4 +1,3 @@
-
 postgresql:
   job_name_suffix: "_postgres"
   exporter_port: 9187
@@ -36,3 +35,68 @@ redis:
   env_vars:
     REDIS_ADDR: "redis://localhost:6379"
   env_template: "redis://{host}:{port}"
+
+mysql:
+  job_name_suffix: "_mysql"
+  exporter_port: 9104
+  metrics_path: "/metrics"
+  exporter_image: "prom/mysqld-exporter:v0.15.1"
+  grafana_dashboard_id: 14057
+
+mariadb:
+  job_name_suffix: "_mariadb"
+  exporter_port: 9104
+  metrics_path: "/metrics"
+  exporter_image: "prom/mysqld-exporter:v0.15.1"
+  grafana_dashboard_id: 14057
+
+rabbitmq:
+  job_name_suffix: "_rabbitmq"
+  # Встроенный плагин rabbitmq_prometheus (:15692). kbudde/management API часто даёт 406 на RMQ 3.11+.
+  exporter_port: 15692
+  metrics_path: "/metrics"
+  exporter_image: ""
+  native_prometheus_scrape: true
+  grafana_dashboard_id: 10991
+
+elasticsearch:
+  job_name_suffix: "_elasticsearch"
+  exporter_port: 9114
+  metrics_path: "/metrics"
+  exporter_image: "quay.io/prometheuscommunity/elasticsearch-exporter:v1.8.0"
+  grafana_dashboard_id: 6480
+
+opensearch:
+  job_name_suffix: "_opensearch"
+  exporter_port: 9114
+  metrics_path: "/metrics"
+  exporter_image: "quay.io/prometheuscommunity/elasticsearch-exporter:v1.8.0"
+  grafana_dashboard_id: 9732
+
+clickhouse:
+  job_name_suffix: "_clickhouse"
+  exporter_port: 9116
+  metrics_path: "/metrics"
+  exporter_image: "f1yegor/clickhouse-exporter:latest"
+  grafana_dashboard_id: 14192
+
+influxdb:
+  job_name_suffix: "_influxdb"
+  exporter_port: 9122
+  metrics_path: "/metrics"
+  exporter_image: "telegraf:1.31-alpine"
+  grafana_dashboard_id: 315
+
+kafka:
+  job_name_suffix: "_kafka"
+  exporter_port: 9308
+  metrics_path: "/metrics"
+  exporter_image: "danielqsj/kafka-exporter:v1.9.0"
+  grafana_dashboard_id: 7589
+
+nats:
+  job_name_suffix: "_nats"
+  exporter_port: 7777
+  metrics_path: "/metrics"
+  exporter_image: "natsio/prometheus-nats-exporter:0.17.2"
+  grafana_dashboard_id: 2279
