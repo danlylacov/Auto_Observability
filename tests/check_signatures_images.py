@@ -271,6 +271,8 @@ def main():
         if isinstance(config, dict) and "exporter_image" in config:
             image_name = config["exporter_image"]
             exporter_port = config.get("exporter_port", None)
+            if not image_name or config.get("native_prometheus_scrape"):
+                continue
             images_to_check.append((stack_name, image_name, exporter_port))
 
     log(f"\nНайдено образов для проверки: {len(images_to_check)}", "INFO")

@@ -1,8 +1,10 @@
 """Prometheus API router module."""
 
 import copy
+import json
 import logging
 import os
+import time
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -20,6 +22,7 @@ from app.services.api_getaway import APIGateway
 from app.services.hosts_service import HostsService
 from app.services.minio_service import MinioService
 from app.services.prometheus_scrape_resolution import (
+    host_port_from_redis_inspect,
     redis_host_key_for_api_host_id,
     resolve_scrape_host_port_for_workload,
     rewrite_targets_internal_port_to_host_port,
@@ -144,6 +147,266 @@ def _generation_exporter_command(stack: str | None) -> list[str] | str | None:
         return None
 
 
+def _resolve_target_address(info: dict[str, Any], host: str = "localhost") -> str:
+    container_name = (
+        info.get("Name", "").lstrip("/")
+        or info.get("Config", {}).get("Hostname", "unknown")
+    )
+    labels = info.get("Config", {}).get("Labels", {}) or {}
+    target_address = host or "localhost"
+    if target_address in ("127.0.0.1",):
+        target_address = "localhost"
+    if not target_address:
+        if labels.get("com.docker.compose.service"):
+            target_address = labels["com.docker.compose.service"]
+        elif container_name:
+            target_address = container_name
+    return target_address
+
+
+def _bootstrap_active_prometheus_config(
+    db: Session,
+    container_id: str,
+    container_data: dict[str, Any],
+    redis_host_key: str,
+) -> PrometheusConfig:
+    """
+    Создаёт active PrometheusConfig для up_exporter, если записи ещё нет.
+    Не требует уже запущенного sidecar-экспортёра (в отличие от generate_config).
+    """
+    info = container_data.get("info", {})
+    classification = container_data.get("classification", {})
+
+    container_name = (
+        info.get("Name", "").lstrip("/")
+        or info.get("Config", {}).get("Hostname", "unknown")
+    )
+    target_address = _resolve_target_address(info)
+
+    stack = None
+    if classification.get("result"):
+        stack = classification["result"][0][0] if classification["result"] else None
+
+    payload: dict[str, Any] = copy.deepcopy(container_data)
+    api_gateway = APIGateway(prometheus_generation_url)
+    config_data = api_gateway.make_request(
+        method="POST",
+        endpoint="/api/v1/generate/",
+        json_data=payload,
+        params={"host": target_address},
+    )
+
+    exporter_config = config_data.get("info", {})
+    config_file = config_data.get("config", {})
+
+    container = db.query(Container).filter(Container.id == container_id).first()
+    if not container:
+        classification_score = classification.get("result") if classification.get("result") else None
+        container = Container(
+            id=container_id,
+            name=container_name,
+            image=info.get("Config", {}).get("Image", ""),
+            status=info.get("State", {}).get("Status", "unknown"),
+            stack=stack,
+            classification_score=classification_score,
+            docker_info=info,
+        )
+        db.add(container)
+    else:
+        container.status = info.get("State", {}).get("Status", container.status)
+        container.docker_info = info
+        if stack:
+            container.stack = stack
+            container.classification_score = classification.get("result")
+
+    network_name = exporter_config.get("network")
+    exporter_image = exporter_config.get("exporter_image")
+    exporter_port = exporter_config.get("exporter_port")
+    job_name_suffix = exporter_config.get("job_name_suffix", "")
+    job_name = f"{container_name}{job_name_suffix}"
+
+    info_block: dict[str, Any] = {
+        "container_name": container_name,
+        "stack": stack,
+        "exporter_image": exporter_image,
+        "exporter_port": exporter_port,
+        "target_address": target_address,
+        "job_name": job_name,
+        "network": network_name,
+        "exporter_env_vars": exporter_config.get("env_vars", {}),
+        "exporter_command": exporter_config.get("exporter_command"),
+        "exporter_entrypoint": exporter_config.get("exporter_entrypoint"),
+    }
+    if "native_prometheus_scrape" in exporter_config:
+        info_block["native_prometheus_scrape"] = bool(
+            exporter_config["native_prometheus_scrape"]
+        )
+
+    config_metadata = {
+        "host_name": redis_host_key,
+        "config": config_file,
+        "info": info_block,
+    }
+
+    existing_config = (
+        db.query(PrometheusConfig)
+        .filter(
+            PrometheusConfig.container_id == container_id,
+            PrometheusConfig.status == "active",
+        )
+        .order_by(PrometheusConfig.created_at.desc())
+        .first()
+    )
+
+    if existing_config:
+        existing_config.container_name = container_name
+        existing_config.stack = stack
+        existing_config.exporter_image = exporter_image
+        existing_config.exporter_port = exporter_port
+        existing_config.target_address = target_address
+        existing_config.job_name = job_name
+        existing_config.minio_bucket = config_file.get("bucket")
+        existing_config.minio_file_path = config_file.get("file")
+        existing_config.config_metadata = config_metadata
+        existing_config.version += 1
+        prometheus_config = existing_config
+    else:
+        prometheus_config = PrometheusConfig(
+            container_id=container_id,
+            container_name=container_name,
+            stack=stack,
+            exporter_image=exporter_image,
+            exporter_port=exporter_port,
+            target_address=target_address,
+            job_name=job_name,
+            minio_bucket=config_file.get("bucket"),
+            minio_file_path=config_file.get("file"),
+            status="active",
+            config_metadata=config_metadata,
+        )
+        db.add(prometheus_config)
+
+    db.commit()
+    db.refresh(prometheus_config)
+    logger.info(
+        "Bootstrapped prometheus config for container %s (stack=%s) before up_exporter",
+        container_id,
+        stack,
+    )
+    return prometheus_config
+
+
+def _refresh_exporter_metadata_from_generation(
+    db: Session,
+    config: PrometheusConfig,
+    container_data: dict[str, Any],
+    target_address: str,
+    *,
+    prometheus_scrape_port: int | None = None,
+) -> None:
+    """
+    Повторно вызывает prometheus_generation и обновляет sidecar-поля в config_metadata.
+    Нужен при устаревших или пустых exporter_env_vars / command / network в БД.
+    """
+    payload: dict[str, Any] = copy.deepcopy(container_data)
+    if prometheus_scrape_port is not None:
+        payload["prometheus_scrape_port"] = int(prometheus_scrape_port)
+
+    api_gateway = APIGateway(prometheus_generation_url)
+    gen_params: dict[str, Any] = {"host": target_address}
+    if prometheus_scrape_port is not None:
+        gen_params["prometheus_scrape_port"] = int(prometheus_scrape_port)
+
+    config_data = api_gateway.make_request(
+        method="POST",
+        endpoint="/api/v1/generate/",
+        json_data=payload,
+        params=gen_params,
+    )
+    exporter_config = config_data.get("info") or {}
+    config_file = config_data.get("config", {})
+
+    md = copy.deepcopy(config.config_metadata or {})
+    inf = dict(md.get("info") or {})
+
+    info_src = container_data.get("info") or {}
+    container_name = (
+        inf.get("container_name")
+        or info_src.get("Name", "").lstrip("/")
+        or info_src.get("Config", {}).get("Hostname", "unknown")
+    )
+    job_name_suffix = exporter_config.get("job_name_suffix", "")
+    job_name = f"{container_name}{job_name_suffix}"
+
+    stack = inf.get("stack")
+    cl = container_data.get("classification") or {}
+    if not stack and cl.get("result"):
+        stack = cl["result"][0][0] if cl["result"] else None
+
+    if "env_vars" in exporter_config:
+        inf["exporter_env_vars"] = exporter_config.get("env_vars") or {}
+    for key in (
+        "exporter_image",
+        "exporter_port",
+        "exporter_command",
+        "exporter_entrypoint",
+        "network",
+    ):
+        if key in exporter_config and exporter_config[key] is not None:
+            inf[key] = exporter_config[key]
+    if "native_prometheus_scrape" in exporter_config:
+        inf["native_prometheus_scrape"] = bool(
+            exporter_config["native_prometheus_scrape"]
+        )
+
+    inf["container_name"] = container_name
+    inf["job_name"] = job_name
+    if stack:
+        inf["stack"] = stack
+    inf["target_address"] = inf.get("target_address") or target_address
+
+    md["info"] = inf
+    if config_file:
+        md["config"] = config_file
+
+    config.config_metadata = md
+    if "exporter_image" in exporter_config:
+        config.exporter_image = exporter_config["exporter_image"]
+    if exporter_config.get("exporter_port") is not None:
+        config.exporter_port = exporter_config["exporter_port"]
+    if stack:
+        config.stack = stack
+    config.container_name = container_name
+    config.job_name = job_name
+    config.target_address = inf.get("target_address", config.target_address)
+    if config_file.get("bucket"):
+        config.minio_bucket = config_file.get("bucket")
+    if config_file.get("file"):
+        config.minio_file_path = config_file.get("file")
+
+    flag_modified(config, "config_metadata")
+    db.commit()
+    db.refresh(config)
+    logger.info(
+        "Refreshed exporter metadata via prometheus_generation for container %s",
+        config.container_id,
+    )
+
+
+def _exporter_sidecar_ready(info: dict[str, Any]) -> bool:
+    """Экспортёр может стартовать без env (только command/entrypoint)."""
+    if info.get("native_prometheus_scrape"):
+        return True
+    env = info.get("exporter_env_vars")
+    if isinstance(env, dict) and len(env) > 0:
+        return True
+    if info.get("exporter_entrypoint"):
+        return True
+    if info.get("exporter_command"):
+        return True
+    return False
+
+
 @router.post("/generate_config", status_code=status.HTTP_200_OK)
 async def generate_config(
         container_id: str,
@@ -153,7 +416,8 @@ async def generate_config(
     """
     Генерация конфига Prometheus и сохранение в БД.
 
-    Проверяет наличие и статус экспортера перед генерацией конфигурации.
+    Если sidecar-экспортёр ещё не запущен, конфиг всё равно генерируется (хост scrape порта
+    берётся из БД или внутреннего порта экспортёра).
 
     Args:
         container_id: Идентификатор контейнера
@@ -164,8 +428,7 @@ async def generate_config(
         dict[str, Any]: Словарь с данными о созданной конфигурации
 
     Raises:
-        HTTPException: Если хост не найден, контейнер не найден,
-                       экспортер не найден или не запущен
+        HTTPException: Если хост не найден или контейнер не найден
     """
     hosts_service = HostsService(db)
     host_dto = hosts_service.get_host_by_id(host_id)
@@ -198,6 +461,16 @@ async def generate_config(
         info.get("Config", {}).get("Hostname", "unknown")
     )
 
+    existing_cfg = (
+        db.query(PrometheusConfig)
+        .filter(
+            PrometheusConfig.container_id == container_id,
+            PrometheusConfig.status == "active",
+        )
+        .order_by(PrometheusConfig.created_at.desc())
+        .first()
+    )
+
     # Use container-reachable address for Prometheus targets.
     network_settings = info.get("NetworkSettings", {})
     networks = network_settings.get("Networks", {}) or {}
@@ -213,48 +486,43 @@ async def generate_config(
             target_address = container_name
 
     all_containers_data = docker_containers.get_containers()
-    exporter_found, exporter_running, exporter_info, _ = _resolve_exporter_state(
+    exporter_found, exporter_running, _, _ = _resolve_exporter_state(
         all_containers_data,
         host_name=redis_host_key,
         container_name=container_name,
     )
-    if not exporter_found:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Exporter '{container_name}-exporter' not found on host '{redis_host_key}'. "
-                   f"Please start exporter first."
+    scrape_port: int | None = None
+    if exporter_found and exporter_running:
+        pref_internal = existing_cfg.exporter_port if existing_cfg else None
+        scrape_port = resolve_scrape_host_port_for_workload(
+            config_info=(existing_cfg.config_metadata or {}).get("info") if existing_cfg else None,
+            exporter_internal_port=pref_internal,
+            workload_container_name=container_name,
+            redis_host_key=redis_host_key,
+            all_containers=all_containers_data,
         )
-    if not exporter_running:
-        exporter_status = exporter_info.get("status", "unknown") if exporter_info else "unknown"
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Exporter '{container_name}-exporter' is not running "
-                   f"(status: {exporter_status}). Please start exporter first."
+    else:
+        logger.warning(
+            "Exporter for %s not running or missing; generating config without live scrape port",
+            container_name,
         )
+        if existing_cfg:
+            infop = (existing_cfg.config_metadata or {}).get("info") or {}
+            raw_sp = infop.get("scrape_host_port")
+            if raw_sp is not None:
+                try:
+                    scrape_port = int(raw_sp)
+                except (TypeError, ValueError):
+                    scrape_port = None
+            if scrape_port is None and existing_cfg.exporter_port is not None:
+                scrape_port = int(existing_cfg.exporter_port)
 
     stack = None
     if classification.get("result"):
         stack = classification["result"][0][0] if classification["result"] else None
 
-    logger.info("Exporter is running; proceeding with config generation for container %s", container_id)
-
-    existing_cfg = (
-        db.query(PrometheusConfig)
-        .filter(
-            PrometheusConfig.container_id == container_id,
-            PrometheusConfig.status == "active",
-        )
-        .order_by(PrometheusConfig.created_at.desc())
-        .first()
-    )
-    pref_internal = existing_cfg.exporter_port if existing_cfg else None
-    scrape_port = resolve_scrape_host_port_for_workload(
-        config_info=(existing_cfg.config_metadata or {}).get("info") if existing_cfg else None,
-        exporter_internal_port=pref_internal,
-        workload_container_name=container_name,
-        redis_host_key=redis_host_key,
-        all_containers=all_containers_data,
-    )
+    logger.info("Proceeding with config generation for container %s exporter_found=%s exporter_running=%s",
+                container_id, exporter_found, exporter_running)
 
     payload: dict[str, Any] = copy.deepcopy(container_data)
     if scrape_port is not None:
@@ -320,7 +588,12 @@ async def generate_config(
         'network': network_name,
         'exporter_env_vars': exporter_config.get("env_vars", {}),
         'exporter_command': exporter_config.get("exporter_command"),
+        'exporter_entrypoint': exporter_config.get("exporter_entrypoint"),
     }
+    if "native_prometheus_scrape" in exporter_config:
+        info_block["native_prometheus_scrape"] = bool(
+            exporter_config["native_prometheus_scrape"]
+        )
     if scrape_port is not None:
         info_block["scrape_host_port"] = scrape_port
     elif existing_cfg:
@@ -397,32 +670,68 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
         PrometheusConfig.status == "active"
     ).order_by(PrometheusConfig.created_at.desc()).first()
 
+    docker_containers = DockerContainers()
+    container_data: dict[str, Any] | None = None
+
     if not config:
-        logger.error("No active config found for container %s", container_id)
-        return {
-            "error": "No active config found for this container",
-            "container_id": container_id
-        }
+        all_containers = docker_containers.get_containers()
+        container_data = all_containers.get(container_id)
+        if not container_data:
+            logger.error("No active config and container %s not in Redis", container_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    "No active Prometheus config for this container. "
+                    "Container not found in Redis — run update containers first."
+                ),
+            )
+        hosts_service_bootstrap = HostsService(db)
+        host_dto_bootstrap = hosts_service_bootstrap.resolve_host_for_container(
+            None, container_data
+        )
+        if not host_dto_bootstrap:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    "No Docker host registered. Add a host in settings "
+                    "or set DOCKER_API_URL."
+                ),
+            )
+        redis_host_key = host_dto_bootstrap.id
+        logger.info(
+            "No active config for %s; bootstrapping from classification before exporter start",
+            container_id,
+        )
+        config = _bootstrap_active_prometheus_config(
+            db, container_id, container_data, redis_host_key
+        )
+
+    if container_data is None:
+        container_data = docker_containers.get_containers().get(container_id)
 
     config_metadata = config.config_metadata or {}
-    host_id = config_metadata.get('host_name', 'localhost')
+    config_host_key = config_metadata.get("host_name")
 
     # Получаем адрес хоста для обращения к docker_api
     hosts_service = HostsService(db)
-    host_dto = hosts_service.get_host_by_id(host_id)
+    host_dto = hosts_service.resolve_host_for_container(config_host_key, container_data)
     if not host_dto:
-        logger.error("Host %s not found", host_id)
-        return {
-            "error": f"Host {host_id} not found",
-            "container_id": container_id
-        }
+        logger.error("Host %s not found (container host_id=%s)", config_host_key, (container_data or {}).get("host_id"))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Host {config_host_key!r} not found. "
+                "Register the Docker host or regenerate the Prometheus config."
+            ),
+        )
+    host_id = host_dto.id
     
     # Преобразуем адрес хоста для Docker (localhost -> host.docker.internal)
     host_address = hosts_service._resolve_host_for_docker(host_dto.host)
     docker_api_host_url = f"http://{host_address}:{host_dto.port}"
 
-    docker_containers = DockerContainers()
-    container_data = docker_containers.get_container(container_id, host_id)
+    if container_data is None:
+        container_data = docker_containers.get_container(container_id, host_id)
 
     # Если не найден с host_id, пробуем найти без фильтра по хосту
     if not container_data:
@@ -434,55 +743,167 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             logger.info("Container found without host filter, using it")
         else:
             logger.error("Target container %s not found in Redis at all", container_id)
-            return {
-                "error": "Target container not found in Redis. Please update containers first.",
-                "container_id": container_id
-            }
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target container not found in Redis. Please update containers first.",
+            )
 
-    exporter_info = config_metadata.get('info', {})
-
-    network_name = exporter_info.get("network")
-    exporter_env_vars = exporter_info.get("exporter_env_vars", {})
-
-    if not network_name or not exporter_env_vars:
-        logger.warning(
-            "Network or env_vars not found in config_metadata for %s, "
-            "trying to get from Redis",
-            container_id
+    container_info = container_data.get("info", {})
+    if not container_info:
+        logger.error("Container info is empty for %s", container_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Container info is empty",
         )
 
-        container_info = container_data.get("info", {})
+    config_metadata = config.config_metadata or {}
+    exporter_info = dict(config_metadata.get("info") or {})
 
-        if not container_info:
-            logger.error("Container info is empty for %s", container_id)
-            return {
-                "error": "Container info is empty",
-                "container_id": container_id
-            }
+    network_name = exporter_info.get("network")
+    if not network_name:
+        network_settings = container_info.get("NetworkSettings", {})
+        networks = network_settings.get("Networks", {})
+        if networks:
+            network_names = list(networks.keys())
+            network_name = (
+                "bridge"
+                if "bridge" in network_names
+                else network_names[0] if network_names else None
+            )
 
-        if not network_name:
-            network_settings = container_info.get('NetworkSettings', {})
-            networks = network_settings.get('Networks', {})
-            if networks:
-                network_names = list(networks.keys())
-                network_name = (
-                    'bridge' if 'bridge' in network_names else
-                    network_names[0] if network_names else None
-                )
+    target_address = (
+        exporter_info.get("target_address")
+        or config.target_address
+        or _resolve_target_address(container_info)
+    )
+    pref_scrape = exporter_info.get("scrape_host_port")
+    if pref_scrape is not None:
+        try:
+            pref_scrape = int(pref_scrape)
+        except (TypeError, ValueError):
+            pref_scrape = None
 
-        if not exporter_env_vars:
-            logger.warning("Env vars not found in config, need to regenerate config for %s", container_id)
-            return {
-                "error": "Env vars not found in config. Please regenerate config first.",
-                "container_id": container_id
-            }
+    if not _exporter_sidecar_ready(exporter_info) or not network_name:
+        logger.info(
+            "Refreshing exporter sidecar metadata from prometheus_generation for %s",
+            container_id,
+        )
+        _refresh_exporter_metadata_from_generation(
+            db,
+            config,
+            container_data,
+            target_address,
+            prometheus_scrape_port=pref_scrape,
+        )
+        config_metadata = config.config_metadata or {}
+        exporter_info = dict(config_metadata.get("info") or {})
+        network_name = exporter_info.get("network") or network_name
+
+    if not network_name:
+        network_settings = container_info.get("NetworkSettings", {})
+        networks = network_settings.get("Networks", {})
+        if networks:
+            network_names = list(networks.keys())
+            network_name = (
+                "bridge"
+                if "bridge" in network_names
+                else network_names[0] if network_names else None
+            )
 
     if not network_name:
         logger.error("Target container %s has no networks. Container must be running.", container_id)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target container has no networks. Container must be running.",
+        )
+
+    if not _exporter_sidecar_ready(exporter_info):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Could not resolve exporter env/command/entrypoint for this stack "
+                "after refresh. Check container classification and signatures.yml."
+            ),
+        )
+
+    if exporter_info.get("native_prometheus_scrape"):
+        try:
+            iport = int(config.exporter_port) if config.exporter_port is not None else None
+        except (TypeError, ValueError):
+            iport = None
+        hp_live = (
+            host_port_from_redis_inspect({"info": container_info}, iport)
+            if iport is not None
+            else None
+        )
+        # #region agent log
+        try:
+            with open(
+                "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log",
+                "a",
+                encoding="utf-8",
+            ) as _df:
+                _df.write(
+                    json.dumps(
+                        {
+                            "sessionId": "a72628",
+                            "hypothesisId": "H2",
+                            "location": "prometheus:up_exporter:native",
+                            "message": "up_exporter native rabbit scrape host port",
+                            "data": {
+                                "container_id": container_id,
+                                "internal_port": iport,
+                                "hp_live": hp_live,
+                                "port_param": port,
+                            },
+                            "timestamp": int(time.time() * 1000),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # #endregion
+        scrape_stored = int(hp_live) if hp_live is not None else int(port)
+        md = dict(config.config_metadata or {})
+        inf = dict(md.get("info") or {})
+        inf["scrape_host_port"] = scrape_stored
+        md["info"] = inf
+        config.config_metadata = md
+        flag_modified(config, "config_metadata")
+        db.commit()
+        db.refresh(config)
+        try:
+            await generate_config(
+                container_id=config.container_id, host_id=str(host_dto.id), db=db
+            )
+        except Exception as sync_exc:
+            logger.warning(
+                "Regenerate Prometheus config after native scrape sync failed for %s: %s",
+                container_id,
+                sync_exc,
+                exc_info=True,
+            )
+        try:
+            mgr = get_prometheus_manager_gateway()
+            mgr.make_request("POST", "/api/v1/manage/config/update", timeout=120.0)
+        except Exception as mgr_exc:
+            logger.warning(
+                "Prometheus manager config pull after native scrape failed: %s",
+                mgr_exc,
+                exc_info=True,
+            )
         return {
-            "error": "Target container has no networks. Container must be running.",
-            "container_id": container_id
+            "message": "RabbitMQ native Prometheus plugin scrape (no exporter sidecar)",
+            "native_prometheus_scrape": True,
+            "scrape_host_port": scrape_stored,
+            "stack": config.stack,
         }
+
+    exporter_env_vars = exporter_info.get("exporter_env_vars") or {}
+    if not isinstance(exporter_env_vars, dict):
+        exporter_env_vars = {}
 
     json_data = {
         "image_name": config.exporter_image,
@@ -496,11 +917,7 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
         json_data["environment"] = exporter_env_vars
         logger.info("Using env vars from config: %s", exporter_env_vars)
     else:
-        logger.warning(
-            "No env vars in config for container %s. "
-            "Exporter may not work correctly.",
-            container_id
-        )
+        logger.info("No env vars for exporter %s (command/entrypoint only)", container_id)
 
     cmd = exporter_info.get("exporter_command")
     if not cmd:
@@ -514,6 +931,15 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
     elif isinstance(cmd, str) and cmd.strip():
         json_data["command"] = cmd.strip()
 
+    ep = exporter_info.get("exporter_entrypoint")
+    if ep:
+        if isinstance(ep, list):
+            ep_list = [str(x) for x in ep if str(x).strip()]
+            if ep_list:
+                json_data["entrypoint"] = ep_list
+        elif isinstance(ep, str) and ep.strip():
+            json_data["entrypoint"] = ep.strip()
+
     try:
         # Используем адрес хоста вместо глобального DOCKER_API_URL
         api_gateway = APIGateway(docker_api_host_url)
@@ -522,32 +948,93 @@ async def up_exporter(container_id: str, port: int, db: Session = Depends(get_db
             method='POST',
             endpoint='/api/v1/manage/container/pull_and_run',
             json_data=json_data,
+            timeout=300,
         )
 
+        inner = (
+            start_exporter.get("result")
+            if isinstance(start_exporter, dict)
+            else None
+        )
+        if isinstance(inner, dict) and inner.get("error"):
+            logger.error(
+                "docker_api pull_and_run returned error for %s: %s",
+                container_id,
+                inner["error"],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(inner["error"]),
+            )
+
+        if not isinstance(inner, dict) or not inner.get("container_id"):
+            logger.error(
+                "docker_api pull_and_run missing container_id for %s, raw=%s",
+                container_id,
+                start_exporter,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "docker_api returned success without container_id; "
+                    "exporter was not started reliably."
+                ),
+            )
+
         logger.info("Exporter started successfully: %s", start_exporter)
+        all_containers = docker_containers.get_containers()
+        hp_live = resolve_scrape_host_port_for_workload(
+            config_info=(config.config_metadata or {}).get("info"),
+            exporter_internal_port=int(config.exporter_port) if config.exporter_port is not None else None,
+            workload_container_name=config.container_name.lstrip("/"),
+            redis_host_key=str(config_metadata.get("host_name") or "localhost"),
+            all_containers=all_containers,
+        )
+        scrape_stored = int(hp_live) if hp_live is not None else int(port)
         md = dict(config.config_metadata or {})
         inf = dict(md.get("info") or {})
-        inf["scrape_host_port"] = int(port)
+        inf["scrape_host_port"] = scrape_stored
         md["info"] = inf
         config.config_metadata = md
         flag_modified(config, "config_metadata")
         db.commit()
+        db.refresh(config)
+
+        try:
+            await generate_config(container_id=config.container_id, host_id=str(host_dto.id), db=db)
+        except Exception as sync_exc:
+            logger.warning(
+                "Regenerate Prometheus config after exporter start failed for %s: %s",
+                container_id,
+                sync_exc,
+                exc_info=True,
+            )
+        try:
+            mgr = get_prometheus_manager_gateway()
+            mgr.make_request("POST", "/api/v1/manage/config/update", timeout=120.0)
+        except Exception as mgr_exc:
+            logger.warning(
+                "Prometheus manager config pull after exporter start failed: %s",
+                mgr_exc,
+                exc_info=True,
+            )
+
         return {
             "message": "Exporter started successfully",
             "exporter": start_exporter,
             "network": network_name,
             "environment": exporter_env_vars,
             "stack": config.stack,
-            "scrape_host_port": int(port),
+            "scrape_host_port": scrape_stored,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to start exporter: %s", e, exc_info=True)
-        return {
-            "error": f"Failed to start exporter: {str(e)}",
-            "container_id": container_id,
-            "network": network_name,
-            "stack": config.stack
-        }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start exporter: {str(e)}",
+        ) from e
 
 
 @router.get("/get_signature", status_code=200)

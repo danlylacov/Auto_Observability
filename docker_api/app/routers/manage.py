@@ -123,9 +123,19 @@ async def pull_and_run_container(container: FullContainer):
             container.ports,
             container.volumes,
             container.environment,
-            container.network
+            container.network,
+            None,
+            container.entrypoint,
         )
+        if isinstance(result, dict) and result.get("error"):
+            logger.error("pull_and_run failed: %s", result["error"])
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(result["error"]),
+            )
         return {"result": result}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error pulling and starting container: {str(e)}")
         raise HTTPException(

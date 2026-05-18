@@ -217,7 +217,13 @@ class ExporterEnvGenerator:
 
         elif stack_key in ['mysql', 'mariadb']:
             credentials['user'] = env_dict.get('MYSQL_USER', env_dict.get('MARIADB_USER', 'root'))
-            credentials['password'] = env_dict.get('MYSQL_PASSWORD', env_dict.get('MARIADB_PASSWORD', 'password'))
+            credentials['password'] = env_dict.get(
+                'MYSQL_PASSWORD',
+                env_dict.get(
+                    'MYSQL_ROOT_PASSWORD',
+                    env_dict.get('MARIADB_PASSWORD', env_dict.get('MARIADB_ROOT_PASSWORD', 'password')),
+                ),
+            )
             credentials['database'] = env_dict.get('MYSQL_DATABASE', env_dict.get('MARIADB_DATABASE', ''))
 
         elif stack_key == 'mongodb':
@@ -239,8 +245,21 @@ class ExporterEnvGenerator:
             credentials['database'] = env_dict.get('CLICKHOUSE_DB', 'default')
 
         elif stack_key in ['elasticsearch', 'opensearch']:
-            credentials['user'] = env_dict.get('ELASTICSEARCH_USERNAME', env_dict.get('OPENSEARCH_USERNAME', ''))
-            credentials['password'] = env_dict.get('ELASTICSEARCH_PASSWORD', env_dict.get('OPENSEARCH_PASSWORD', ''))
+            credentials['password'] = env_dict.get(
+                'ELASTICSEARCH_PASSWORD',
+                env_dict.get(
+                    'OPENSEARCH_PASSWORD',
+                    env_dict.get('ELASTIC_PASSWORD', env_dict.get('OPENSEARCH_INITIAL_ADMIN_PASSWORD', '')),
+                ),
+            )
+            if stack_key == 'elasticsearch':
+                credentials['user'] = env_dict.get(
+                    'ELASTICSEARCH_USERNAME', env_dict.get('ELASTIC_USERNAME', 'elastic')
+                )
+            else:
+                credentials['user'] = env_dict.get(
+                    'OPENSEARCH_USERNAME', env_dict.get('OPENSEARCH_INITIAL_ADMIN_USER', 'admin')
+                )
 
         elif stack_key == 'rabbitmq':
             credentials['user'] = env_dict.get('RABBITMQ_DEFAULT_USER', 'guest')
@@ -332,14 +351,28 @@ class ExporterEnvGenerator:
 
         generated_env = {}
 
+        env_tpl = exporter_config.get("env_template")
+
+        def _uses_connection_template(key: str, val: Any) -> bool:
+            if not env_tpl or not isinstance(val, str):
+                return False
+            if "{" in val:
+                return True
+            mapping = {
+                "rabbitmq": "RABBIT_URL",
+                "postgresql": "DATA_SOURCE_NAME",
+                "mongodb": "MONGODB_URI",
+                "redis": "REDIS_ADDR",
+            }
+            return mapping.get(stack_key) == key
+
         for env_key, env_value in env_vars_config.items():
-            env_template = exporter_config.get('env_template')
-            if env_template and env_key in env_vars_config:
+            if _uses_connection_template(env_key, env_value):
                 connection_string = self._format_connection_string(
-                    env_template,
+                    env_tpl,
                     target_address,
                     container_port,
-                    credentials
+                    credentials,
                 )
                 generated_env[env_key] = connection_string
             else:
@@ -368,11 +401,11 @@ class ExporterEnvGenerator:
         if not networks:
             return None
         network_names = list(networks.keys())
-
-        if 'bridge' in network_names:
-            return 'bridge'
-
-        return network_names[0]
+        # Prefer user-defined networks so Docker DNS resolves container names for sidecars.
+        non_bridge = [n for n in network_names if n != "bridge"]
+        if non_bridge:
+            return non_bridge[0]
+        return "bridge" if "bridge" in network_names else network_names[0]
 
     def get_exporter_port(self):
         """

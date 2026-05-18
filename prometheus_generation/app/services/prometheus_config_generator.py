@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import time
 from typing import Any, Dict, Optional, Union
 
 import docker
@@ -86,6 +88,45 @@ class PrometheusConfigGenerator:
         return None
 
     @staticmethod
+    def _host_port_from_port_bindings(
+        info: dict[str, Any],
+        preferred_internal: int | None,
+    ) -> int | None:
+        bindings = (info.get("HostConfig") or {}).get("PortBindings") or {}
+        if preferred_internal is not None:
+            pk = f"{int(preferred_internal)}/tcp"
+            lst = bindings.get(pk)
+            if lst and isinstance(lst, list) and lst[0].get("HostPort"):
+                hp = lst[0]["HostPort"]
+                if hp:
+                    return int(hp)
+        for _pk, lst in bindings.items():
+            if str(_pk).endswith("/tcp") and lst and isinstance(lst, list) and lst[0].get("HostPort"):
+                hp = lst[0]["HostPort"]
+                if hp:
+                    return int(hp)
+        return None
+
+    @classmethod
+    def _published_host_port(
+        cls,
+        container_info: dict[str, Any],
+        preferred_internal: int | None,
+    ) -> int | None:
+        """Host port опубликованный для internal TCP-порта workload (из docker inspect)."""
+        info = container_info
+        ports = (info.get("NetworkSettings") or {}).get("Ports") or {}
+        if preferred_internal is not None:
+            pk = f"{int(preferred_internal)}/tcp"
+            b = ports.get(pk)
+            if b and isinstance(b, list) and b[0].get("HostPort"):
+                return int(b[0]["HostPort"])
+        for _pk, b in ports.items():
+            if str(_pk).endswith("/tcp") and b and isinstance(b, list) and b[0].get("HostPort"):
+                return int(b[0]["HostPort"])
+        return cls._host_port_from_port_bindings(info, preferred_internal)
+
+    @staticmethod
     def _scraping_timing(value: Optional[Union[int, float, str]], default: str) -> str:
         """Prometheus duration string from signatures.yml (int/float interpreted as seconds)."""
         if value is None or value == "":
@@ -110,6 +151,115 @@ class PrometheusConfigGenerator:
             str: Нормализованное название стека
         """
         return stack.lower().replace(' ', '_')
+
+    def _apply_sidecar_runtime(
+        self,
+        stack_key: str,
+        container_info: Dict[str, Any],
+        network_name: Optional[str],
+        exporter_config: Dict[str, Any],
+        generated_env_vars: Dict[str, str],
+    ) -> None:
+        """
+        Правит command/env/entrypoint sidecar-экспортёра под реальные образы (mysqld 0.15, ES exporter, Telegraf и т.д.).
+        """
+        from urllib.parse import quote
+
+        eg = self.env_generator
+        cname = eg._get_container_name(container_info)
+        env_list = container_info.get("Config", {}).get("Env", [])
+        env_dict = eg._parse_env_vars(env_list)
+        target = eg._get_container_target(container_info, cname, network_name)
+
+        if stack_key == "rabbitmq" and exporter_config.get("native_prometheus_scrape"):
+            exporter_config["env_vars"] = {}
+            exporter_config["exporter_command"] = None
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key in ("mysql", "mariadb"):
+            cport = eg._extract_port_from_exposed(container_info, eg._get_default_port(stack_key))
+            creds = eg._get_credentials(env_dict, stack_key)
+            user = creds.get("user") or "root"
+            pw = creds.get("password") or ""
+            exporter_config["exporter_command"] = [
+                f"--mysqld.address={target}:{cport}",
+                f"--mysqld.username={user}",
+            ]
+            exporter_config["env_vars"] = {"MYSQLD_EXPORTER_PASSWORD": pw}
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key == "elasticsearch":
+            cport = eg._extract_port_from_exposed(container_info, eg._get_default_port(stack_key))
+            uri = f"http://{target}:{cport}"
+            exporter_config["exporter_command"] = [
+                f"--es.uri={uri}",
+                "--es.ssl-skip-verify",
+            ]
+            exporter_config["env_vars"] = {}
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key == "opensearch":
+            cport = eg._extract_port_from_exposed(container_info, eg._get_default_port(stack_key))
+            creds = eg._get_credentials(env_dict, stack_key)
+            user = creds.get("user") or "admin"
+            pw = creds.get("password") or ""
+            if pw:
+                uq = quote(str(user), safe="")
+                pq = quote(str(pw), safe="")
+                uri = f"http://{uq}:{pq}@{target}:{cport}"
+            else:
+                uri = f"http://{target}:{cport}"
+            exporter_config["exporter_command"] = [
+                f"--es.uri={uri}",
+                "--es.ssl-skip-verify",
+            ]
+            exporter_config["env_vars"] = {}
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key == "clickhouse":
+            cport = eg._extract_port_from_exposed(container_info, eg._get_default_port(stack_key))
+            exporter_config["exporter_command"] = [
+                f"-scrape_uri=http://default@{target}:{cport}/",
+            ]
+            exporter_config["env_vars"] = generated_env_vars or {}
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key == "kafka":
+            cport = eg._extract_port_from_exposed(container_info, eg._get_default_port(stack_key))
+            exporter_config["exporter_command"] = [
+                f"--kafka.server={target}:{cport}",
+            ]
+            exporter_config["env_vars"] = generated_env_vars or {}
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key == "nats":
+            uri = f"http://{target}:8222"
+            exporter_config["exporter_command"] = ["-varz", uri]
+            exporter_config["env_vars"] = generated_env_vars or {}
+            exporter_config.pop("exporter_entrypoint", None)
+            return
+
+        if stack_key == "influxdb":
+            cport = eg._extract_port_from_exposed(container_info, eg._get_default_port(stack_key))
+            influx_uri = f"http://{target}:{cport}"
+            script = (
+                f'printf "%s\\n" "[[inputs.influxdb]]" "  urls = [\\"{influx_uri}\\"]" "" '
+                '"[[outputs.prometheus_client]]" "  listen = \\":9122\\"" "  path = \\"/metrics\\"" '
+                "> /tmp/tg.conf && exec telegraf --config /tmp/tg.conf"
+            )
+            exporter_config["exporter_entrypoint"] = ["/bin/sh", "-c", script]
+            exporter_config["exporter_command"] = None
+            exporter_config["env_vars"] = {}
+            return
+
+        exporter_config["env_vars"] = generated_env_vars or {}
+        exporter_config.pop("exporter_entrypoint", None)
 
     def _get_exporter_host_port(self, container_port: str) -> Optional[str]:
         """
@@ -239,11 +389,56 @@ class PrometheusConfigGenerator:
 
         network_name = self.get_container_network(container_info)
 
-        generated_env_vars = self.env_generator.generate_env_vars(
-            container_info=container_info,
-            stack_key=stack_key,
-            network_name=network_name
+        if stack_key == "rabbitmq" and exporter_config.get("native_prometheus_scrape"):
+            generated_env_vars: dict[str, str] = {}
+        else:
+            generated_env_vars = self.env_generator.generate_env_vars(
+                container_info=container_info,
+                stack_key=stack_key,
+                network_name=network_name,
+            )
+
+        self._apply_sidecar_runtime(
+            stack_key, container_info, network_name, exporter_config, generated_env_vars
         )
+
+        if exporter_config.get("native_prometheus_scrape"):
+            int_port = exporter_config.get("exporter_port")
+            try:
+                pint = int(int_port) if int_port is not None else None
+            except (TypeError, ValueError):
+                pint = None
+            pub = self._published_host_port(container_info, pint) if pint is not None else None
+            # #region agent log
+            try:
+                dbg_path = (
+                    "/home/daniil/Рабочий стол/диплом/Auto_Observability/.cursor/debug-a72628.log"
+                )
+                with open(dbg_path, "a", encoding="utf-8") as _df:
+                    _df.write(
+                        json.dumps(
+                            {
+                                "sessionId": "a72628",
+                                "hypothesisId": "H1",
+                                "location": "prometheus_config_generator:generate_config:native_port",
+                                "message": "native_prometheus scrape port resolution",
+                                "data": {
+                                    "container": container_name,
+                                    "internal_port": pint,
+                                    "published_host_port": pub,
+                                    "had_scrape_override": scrape_override is not None,
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+            except OSError:
+                pass
+            # #endregion
+            if pub is not None and exporter_config.get("prometheus_scrape_port") is None:
+                exporter_config["prometheus_scrape_port"] = pub
 
         config = self._build_prometheus_config(
             container_name=container_name,
@@ -258,6 +453,5 @@ class PrometheusConfigGenerator:
         }
 
         result['exporter_config']['network'] = network_name
-        result['exporter_config']['env_vars'] = generated_env_vars
 
         return result

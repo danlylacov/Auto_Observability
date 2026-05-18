@@ -114,6 +114,9 @@ class TestDockerManagerServices:
         
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
+        mock_container.reload = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {"State": {"ExitCode": 0}}
         mock_client.containers.run.return_value = mock_container
         mock_docker.from_env.return_value = mock_client
         
@@ -136,6 +139,9 @@ class TestDockerManagerServices:
         
         mock_container = MagicMock()
         mock_container.short_id = "abc123"
+        mock_container.reload = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {"State": {"ExitCode": 0}}
         mock_client.containers.run.return_value = mock_container
         mock_docker.from_env.return_value = mock_client
         
@@ -160,6 +166,10 @@ class TestDockerManagerServices:
         mock_existing_container = MagicMock()
         mock_existing_container.status = "running"
         mock_existing_container.short_id = "existing123"
+        mock_existing_container.attrs = {"Config": {"Image": "nginx:latest"}}
+        mock_img = MagicMock()
+        mock_img.tags = ["nginx:latest"]
+        mock_existing_container.image = mock_img
         mock_client.containers.get.return_value = mock_existing_container
         mock_docker.from_env.return_value = mock_client
         
@@ -168,6 +178,40 @@ class TestDockerManagerServices:
         
         assert result["status"] == "Контейнер уже запущен"
         assert result["container_id"] == "existing123"
+
+    @patch('docker_api.app.services.docker_manager.docker')
+    def test_pull_and_run_replaces_when_image_mismatch(self, mock_docker):
+        """При несовпадении образа старый контейнер удаляется и создаётся новый."""
+        NotFound = type('NotFound', (Exception,), {})
+        mock_docker.errors = MagicMock()
+        mock_docker.errors.NotFound = NotFound
+        mock_docker.errors.ImageNotFound = NotFound
+
+        mock_client = MagicMock()
+        mock_client.images.get.return_value = MagicMock()
+
+        mock_existing_container = MagicMock()
+        mock_existing_container.status = "running"
+        mock_existing_container.attrs = {"Config": {"Image": "old/exporter:1"}}
+        mock_img = MagicMock()
+        mock_img.tags = ["old/exporter:1"]
+        mock_existing_container.image = mock_img
+        mock_client.containers.get.return_value = mock_existing_container
+
+        mock_new = MagicMock()
+        mock_new.short_id = "newid123"
+        mock_new.reload = MagicMock()
+        mock_new.status = "running"
+        mock_new.attrs = {"State": {"ExitCode": 0}}
+        mock_client.containers.run.return_value = mock_new
+        mock_docker.from_env.return_value = mock_client
+
+        manager = DockerManager()
+        result = manager.pull_and_run_container("new/exporter:2", name="same-name-exporter")
+
+        mock_existing_container.remove.assert_called_once_with(force=True)
+        mock_client.containers.run.assert_called_once()
+        assert result.get("container_id") == "newid123"
 
     @patch('docker_api.app.services.docker_manager.docker')
     def test_remove_volume_success(self, mock_docker):

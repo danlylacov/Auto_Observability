@@ -1,5 +1,7 @@
 import logging
-from typing import List
+import os
+from typing import Any, List
+from urllib.parse import urlparse
 
 import requests
 from sqlalchemy.orm import Session
@@ -84,6 +86,65 @@ class HostsService:
         if not host:
             return None
         return HostDTO(host_id=host.id, name=host.name, host=host.host, port=host.port)
+
+    def _host_dto_from_docker_api_env(self) -> HostDTO | None:
+        """Fallback when config metadata has placeholder host keys (e.g. localhost)."""
+        url = os.getenv("DOCKER_API_URL", "").strip()
+        if not url:
+            return None
+        parsed = urlparse(url)
+        if not parsed.hostname:
+            return None
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        return HostDTO(
+            host_id="docker_api_env",
+            name="docker_api",
+            host=parsed.hostname,
+            port=port,
+        )
+
+    def resolve_host_for_container(
+        self,
+        host_key: str | None,
+        container_data: dict[str, Any] | None = None,
+    ) -> HostDTO | None:
+        """
+        Находит хост для вызова docker_api: по UUID, имени, данным контейнера из Redis или DOCKER_API_URL.
+        """
+        candidates: list[str] = []
+        if container_data:
+            cid = container_data.get("host_id")
+            if cid:
+                candidates.append(str(cid).strip())
+            cname = container_data.get("host_name")
+            if cname:
+                candidates.append(str(cname).strip())
+        if host_key:
+            candidates.append(str(host_key).strip())
+
+        seen: set[str] = set()
+        for key in candidates:
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            dto = self.get_host_by_id(key)
+            if dto:
+                return dto
+            for h in self.get_all_hosts_from_db():
+                if h.name == key:
+                    return h
+
+        all_hosts = self.get_all_hosts_from_db()
+        if len(all_hosts) == 1:
+            return all_hosts[0]
+
+        placeholder = {"", "localhost", "127.0.0.1", "0.0.0.0"}
+        if not host_key or str(host_key).strip().lower() in placeholder:
+            env_dto = self._host_dto_from_docker_api_env()
+            if env_dto:
+                return env_dto
+
+        return None
 
     def upload_hosts(self) -> dict[str, dict]:
         """

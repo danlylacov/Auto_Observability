@@ -49,6 +49,11 @@ def host_port_from_redis_inspect(
     return _host_port_from_port_bindings(info, preferred_internal)
 
 
+_AMBIGUOUS_REDIS_HOST_KEYS = frozenset(
+    {"", "localhost", "127.0.0.1", "host.docker.internal", "default"}
+)
+
+
 def find_exporter_container_data(
     *,
     workload_container_name: str,
@@ -56,16 +61,21 @@ def find_exporter_container_data(
     all_containers: dict[str, Any],
 ) -> dict[str, Any] | None:
     exp = f"{workload_container_name.lstrip('/').lower()}-exporter"
+    fallback: dict[str, Any] | None = None
+    hid = (host_id or "").strip()
     for cdata in all_containers.values():
         if not isinstance(cdata, dict):
             continue
         nm = (cdata.get("info") or {}).get("Name", "").lstrip("/").lower()
         if nm != exp:
             continue
+        if fallback is None:
+            fallback = cdata
         ch = redis_host_key_for_api_host_id(cdata)
-        if ch and ch != host_id:
-            continue
-        return cdata
+        if ch and hid and ch == hid:
+            return cdata
+    if not hid or hid in _AMBIGUOUS_REDIS_HOST_KEYS:
+        return fallback
     return None
 
 
@@ -77,21 +87,23 @@ def resolve_scrape_host_port_for_workload(
     redis_host_key: str,
     all_containers: dict[str, Any],
 ) -> int | None:
-    """DB scrape_host_port (from up_exporter) then Redis-published port for the exporter."""
+    """Prefer live Docker port bindings; fall back to DB scrape_host_port from last up_exporter."""
     cfgi = config_info or {}
-    raw = cfgi.get("scrape_host_port")
-    if raw is not None:
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            pass
     exp_cdata = find_exporter_container_data(
         workload_container_name=workload_container_name,
         host_id=redis_host_key,
         all_containers=all_containers,
     )
     if exp_cdata:
-        return host_port_from_redis_inspect(exp_cdata, exporter_internal_port)
+        live = host_port_from_redis_inspect(exp_cdata, exporter_internal_port)
+        if live is not None:
+            return live
+    raw = cfgi.get("scrape_host_port")
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
     return None
 
 

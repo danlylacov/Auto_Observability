@@ -1,11 +1,3 @@
-# Секреты и учётные данные — только в корневом `.env` (см. `.env.example`).
-# Скопируйте: cp .env.example .env и задайте JWT_SECRET, пароли и PROMETHEUS_CONFIG_HOST_PATH.
-# Compose подставляет переменные из `.env` рядом с этим файлом.
-#
-# Исключение: сервис `docker_api` использует только `docker_api/.env` (без корневого .env).
-#
-# Первый вход в UI: http://localhost:3000/login — MAINTAINER_USERNAME / MAINTAINER_PASSWORD из `.env`.
-
 services:
   postgres:
     image: postgres:15-alpine
